@@ -50,5 +50,18 @@ These are properties of the original code, noted so the comparison is honest:
 
 ## Changes from the original
 
-None yet. Corrections (moisture, spawn basis) and the colonisation forecast will be
-added as **separate modules**, and each change will be listed here with the reason.
+The corrected maths lives in `mycodemo/cultivation/corrected.py` (tested in
+`tests/test_cultivation_corrected.py`). The files ported from mycro-grow stay
+unchanged, so the app can show both columns side by side.
+
+| Change | Original | Corrected | Why |
+|---|---|---|---|
+| 1. Starting moisture | Weighed mass treated as bone dry | Dry matter = weighed mass x (1 - starting moisture); only the missing water is added | Bagged pellets and straw hold about 10 % water. Example: 5 lb at 10 % to 60 % adds 6.25 lb, not 7.5 lb (same as the hosted calculator) |
+| 2. Yield basis | Yield = weighed mass x BE | Yield = dry matter x BE | BE is defined on dry substrate |
+| 3. Spawn basis | Spawn % of hydrated substrate | Choose either basis; both percentages shown | MycoDemo uses % of the whole mix. 20 % of hydrated substrate = 16.7 % of the whole mix |
+
+If the starting moisture is 0 and the spawn basis is "of_hydrated", the corrected
+maths gives exactly the original numbers (checked by a test).
+
+Not changed yet: BE is still one fixed number. A range from real bag data and the
+colonisation forecast will come as further modules.
