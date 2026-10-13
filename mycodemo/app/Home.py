@@ -26,8 +26,9 @@ st.markdown(
 
 st.subheader("Pages")
 st.page_link("pages/1_Grow_Calculator.py", label="Grow Calculator", icon="🧮")
+st.page_link("pages/2_Grow_Log_and_Photos.py", label="Grow Log & Photos", icon="📷")
 st.caption(
-    "Coming next: Grow Log & Photos (colonisation forecast), Substrate Recipe, "
+    "Coming next: Substrate Recipe, "
     "Fruiting Conditions, Harvest & BE, How good are the models, Materials (extension)."
 )
 
