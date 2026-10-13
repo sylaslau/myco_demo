@@ -1,4 +1,4 @@
-"""Tests for Growth forecast and Warnings (mycodemo.growth.forecast), using made-up curves."""
+"""Tests for Colonisation forecast and Warnings (mycodemo.growth.forecast), using made-up curves."""
 
 import numpy as np
 import pytest
@@ -9,6 +9,7 @@ from mycodemo.growth.forecast import (
     forecast_by_photo,
     forecast_warnings,
     logistic,
+    pace_vs_typical,
 )
 
 T = np.arange(0, 15, 1.0)
@@ -60,3 +61,21 @@ def test_warning_never_reaches_90():
 
 def test_no_warning_for_good_series():
     assert forecast_warnings(T, C, forecast(T, C)) == []
+
+
+def test_pace_ahead():
+    assert pace_vs_typical(8.0) == "ahead"
+
+
+def test_pace_within():
+    assert pace_vs_typical(10) == "within"
+    assert pace_vs_typical(12.5) == "within"
+    assert pace_vs_typical(14) == "within"
+
+
+def test_pace_behind():
+    assert pace_vs_typical(20.0) == "behind"
+
+
+def test_pace_unknown_for_nan():
+    assert pace_vs_typical(np.nan) == "unknown"

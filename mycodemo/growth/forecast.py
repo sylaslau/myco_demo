@@ -1,4 +1,4 @@
-"""Growth forecast: fit an S-curve to % colonised per day and forecast the 90% / 95% day."""
+"""Colonisation forecast: fit an S-curve to % colonised per day and forecast the 90% / 95% day."""
 
 import warnings
 
@@ -63,6 +63,17 @@ def forecast(t, c, model="logistic"):
     }
 
 
+def pace_vs_typical(day90, typical=(10, 14)):
+    """Compare the 90% day with the typical oyster range: 'ahead', 'within', 'behind' or 'unknown'."""
+    if day90 is None or np.isnan(day90):
+        return "unknown"
+    if day90 < typical[0]:
+        return "ahead"
+    if day90 > typical[1]:
+        return "behind"
+    return "within"
+
+
 def forecast_by_photo(t, c, model="logistic", min_photos=2):
     """How the forecast changes as each photo is added (photos in day order)."""
     t, c = np.asarray(t, float), np.asarray(c, float)
@@ -74,14 +85,14 @@ def forecast_by_photo(t, c, model="logistic", min_photos=2):
 
 
 def forecast_warnings(t, c, result):
-    """Warnings for a weak forecast: too few photos, or the dish never reaches 90%."""
+    """Warnings for a weak forecast: too few photos, or 90% not reached within 60 days."""
     out = []
     if len(t) < MIN_PHOTOS:
         out.append(f"Only {len(t)} photo(s): at least {MIN_PHOTOS} are needed for a forecast you can trust.")
     if result["params"] is None:
         out.append("The curve could not be fitted to these photos.")
     elif np.isnan(result["day90"]):
-        out.append("The curve never reaches 90%: this dish may not fully colonise.")
+        out.append("90% is not reached within 60 days on this curve.")
     if len(c) and np.max(c) < 0.90 and not np.isnan(result["day90"]):
         out.append(
             f"No photo has reached 90% yet (highest {100 * np.max(c):.0f}%), "
