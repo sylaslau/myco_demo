@@ -31,3 +31,23 @@ def test_best_epoch_and_save_run(tmp_path):
     assert (out / "curves.png").stat().st_size > 0
     assert read_results_csv(out / "epochs.csv").shape[0] == 2
     assert pd.read_json(out / "settings.json", typ="series")["best_epoch"] == 2
+
+
+def test_learning_curve_and_plots(tmp_path):
+    import numpy as np
+
+    from mycodemo.modeling.curves import (learning_curve, plot_fold_scores, plot_learning_curve,
+                                          plot_lines, training_run_dir)
+
+    df = pd.DataFrame({"x": np.arange(50.0)})
+    folds = [("a", df.iloc[:40], df.iloc[40:]), ("b", df.iloc[10:], df.iloc[:10])]
+    lc = learning_curve(folds, lambda tr, te: len(tr), fractions=(0.5, 1.0), repeats=3)
+    assert len(lc) == 2 * (3 + 1)  # three draws at 0.5, one at 1.0, per fold
+    assert lc[lc.fraction == 1.0]["n_train"].tolist() == [40, 40]
+    assert plot_learning_curve(lc, tmp_path / "lc.png").exists()
+    scores = pd.DataFrame({"held_out_lab": ["a", "a", "b", "b"], "model": ["m1", "m2"] * 2,
+                           "fold_error": [1.5, 2.0, 1.2, 1.8]})
+    assert plot_fold_scores(scores, tmp_path / "f.png").exists()
+    t = pd.DataFrame({"n_photos": [3, 4, 5], "err_model": [3, 2, 1], "err_baseline": [2, 2, 2]})
+    assert plot_lines(t, "n_photos", ["err_model", "err_baseline"], tmp_path / "e.png").exists()
+    assert training_run_dir("demo", tmp_path).is_dir()

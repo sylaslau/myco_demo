@@ -19,6 +19,7 @@ import matplotlib
 
 matplotlib.use("Agg")
 import matplotlib.pyplot as plt
+import numpy as np
 import pandas as pd
 
 ANSI = re.compile(r"\x1b\[[0-9;?]*[a-zA-Z]")
@@ -172,3 +173,67 @@ def save_history_csv(df: pd.DataFrame, out_dir, direction: str, **meta) -> Path:
     path = out / history_filename(meta["model"], meta["run"], direction, meta["date"])
     with_history_columns(df, **meta).to_csv(path, index=False)
     return path
+
+
+# --- Non-YOLO models: fold scores, learning curve, error against a growing input --------------
+def training_run_dir(run_id: str, out_dir=None) -> Path:
+    """reports/training_runs/<run_id>/ (created), the same place save_run writes to."""
+    from mycodemo.config import REPORTS_DIR
+
+    out = Path(out_dir) if out_dir else REPORTS_DIR / "training_runs"
+    out = out / run_id
+    out.mkdir(parents=True, exist_ok=True)
+    return out
+
+
+def learning_curve(folds, score_fn, fractions=(0.2, 0.4, 0.6, 0.8, 1.0), repeats=5, seed=0) -> pd.DataFrame:
+    """Score against training size. ``folds`` is a list of (name, train_df, test_df);
+    ``score_fn(train, test)`` returns one number. Each fraction draws ``repeats`` random
+    subsets of the training rows (one draw at 1.0), so the curve shows how much more data helps."""
+    rng = np.random.default_rng(seed)
+    rows = []
+    for name, train, test in folds:
+        for frac in fractions:
+            n = max(2, int(round(frac * len(train))))
+            for rep in range(1 if frac >= 1 else repeats):
+                sub = train if frac >= 1 else train.iloc[rng.choice(len(train), n, replace=False)]
+                rows.append({"fold": name, "fraction": frac, "n_train": len(sub), "repeat": rep,
+                             "score": score_fn(sub, test)})
+    return pd.DataFrame(rows)
+
+
+def plot_lines(table: pd.DataFrame, x: str, ys: list[str], out_png, xlabel="", ylabel="", title="") -> Path:
+    """One line per column in ``ys`` against ``x`` (table sorted by x)."""
+    fig, ax = plt.subplots(figsize=(6.5, 4.2))
+    t = table.sort_values(x)
+    for col, colour in zip(ys, [BLUE, ORANGE, GREY]):
+        ax.plot(t[x], t[col], marker="o", lw=2, color=colour, label=col)
+    ax.set(xlabel=xlabel or x, ylabel=ylabel, title=title)
+    ax.grid(alpha=0.25)
+    ax.spines[["top", "right"]].set_visible(False)
+    ax.legend(frameon=False)
+    fig.tight_layout()
+    out_png = Path(out_png)
+    out_png.parent.mkdir(parents=True, exist_ok=True)
+    fig.savefig(out_png, dpi=130)
+    plt.close(fig)
+    return out_png
+
+
+def plot_learning_curve(lc: pd.DataFrame, out_png, ylabel="score") -> Path:
+    """Mean score over the repeats and folds against number of training rows."""
+    mean = lc.groupby("fraction").agg(n_train=("n_train", "mean"), score=("score", "mean"))
+    return plot_lines(mean.reset_index(), "n_train", ["score"], out_png, "training rows", ylabel,
+                      "Learning curve")
+
+
+def plot_fold_scores(scores: pd.DataFrame, out_png, fold="held_out_lab", model="model", value="fold_error") -> Path:
+    """Grouped bars: one group per fold, one bar per model."""
+    ax = scores.pivot(index=fold, columns=model, values=value).plot.bar(figsize=(7, 4))
+    ax.set(ylabel=value, xlabel=fold, title="Score per cross-validation fold")
+    ax.spines[["top", "right"]].set_visible(False)
+    out_png = Path(out_png)
+    out_png.parent.mkdir(parents=True, exist_ok=True)
+    ax.figure.savefig(out_png, dpi=130, bbox_inches="tight")
+    plt.close(ax.figure)
+    return out_png

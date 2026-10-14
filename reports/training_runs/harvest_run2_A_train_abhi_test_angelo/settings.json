@@ -1,0 +1,14 @@
+{
+  "run_id": "harvest_run2_A_train_abhi_test_angelo",
+  "epochs_run": 50,
+  "best_epoch": 48,
+  "notebook": "notebooks/kaggle_harvest_readiness.ipynb",
+  "model": "yolo11n-seg.pt",
+  "epochs": 50,
+  "imgsz": 640,
+  "optimizer": "AdamW (auto), lr 0.001667",
+  "batch": 16,
+  "seed": 0,
+  "hyperparameters": "Ultralytics defaults",
+  "source": "recovered from console log; validation scores only, no training losses"
+}

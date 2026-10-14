@@ -1,0 +1,12 @@
+{
+  "run_id": "property_model_20261014",
+  "model": "TwoStepModel",
+  "cv": "leave one lab out",
+  "labs": [
+    "d004",
+    "d005",
+    "d006",
+    "d007",
+    "d016"
+  ]
+}
