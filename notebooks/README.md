@@ -6,6 +6,7 @@ Every notebook has a number, and Kaggle notebooks are named `<number>.kaggle_<na
 Every notebook that trains or fits a model saves its history (per epoch, per fold, learning curve) and plots it.
 Notebooks stay thin: code the Streamlit app also needs lives in the `mycodemo` package.
 Notebooks are saved without outputs, so use Run All.
+Agaricus bisporus excluded from the project (10-15).
 
 | Group | Notebook | Question it answers | Needs first |
 |---|---|---|---|
@@ -16,7 +17,7 @@ Notebooks are saved without outputs, so use Run All.
 | | 1.1 (planned) | Maths: mycro-grow original vs corrected | |
 | | 1.2 (planned) | Calculator improved with ML | |
 | 2 Colonisation | 2.0.colonisation_EDA (planned) | EDA: consensus table by genus and species (content being planned) | |
-| | 2.1.colonisation_baseline | Baseline from the field's general consensus on spawn run (guides, textbooks, extension sources), across genera and species: tidy table, range bars, curves with a temperature slider, two heatmaps | `pip install plotly`; data in `MycoMaterials/germini/colonisation_consensus.csv` (outside the repo) |
+| | 2.1.colonisation_baseline | Baseline from the field's general consensus on spawn run (guides, textbooks, extension sources), across genera and species (18 book rows + 14 usemycro rows): tidy table with `source_group` / `plot_group`, range bars per plot group, curves with a temperature slider, two heatmaps (book rows only), and one colonisation plot per plot group for the Monitor page (section 6) | `pip install plotly`; data in `MycoMaterials/germini/colonisation_consensus.csv` (outside the repo) |
 | | 2.2.colonisation_time_estimate | Colonisation time estimate from recipe and conditions (placeholder) | |
 | | 2.3.colonisation_image_EDA (planned) | EDA of the colonisation photos | runs on the PC |
 | | 2.4.colonisation_image_coverage | Photo coverage: photo to % colonised | writes `data/interim/coverage_auto.csv` |
