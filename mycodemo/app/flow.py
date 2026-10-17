@@ -11,7 +11,8 @@ from mycodemo.growth.forecast import (
 
 MATERIAL_SPECIES = pipeline.MATERIAL_SPECIES
 PRODUCTS, ENVIRONMENTS, BE_KEY = pipeline.PRODUCTS, pipeline.ENVIRONMENTS, pipeline.BE_KEY
-TYPICAL_OYSTER_DAYS = pipeline.TYPICAL_OYSTER_DAYS
+FULLY_COLONISED_NOTE = ("Start induction when the substrate is white all the way through, bottom included; "
+                        "90% on a photo is only a surface marker.")
 STAGES_FOOD = ["Inoculated", "Colonising", "Fruiting", "Harvested", "Contaminated"]
 STAGES_MATERIAL = ["Pre-treatment", "Colonisation", "Liquid fermentation", "Post-treatment", "Contaminated"]
 

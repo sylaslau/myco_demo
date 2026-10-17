@@ -10,18 +10,16 @@ back to the step below and says so in the note; it never returns nothing.
 import re
 from dataclasses import asdict, dataclass, field
 from datetime import date, timedelta
-from functools import cache, lru_cache
-from pathlib import Path
+from functools import lru_cache
 
 import numpy as np
 import pandas as pd
 
-from mycodemo.cultivation import FRUITING_CONDITIONS, SPECIES_BE, substrate_recipe
+from mycodemo.cultivation import FRUITING_CONDITIONS, SPECIES_BE, baseline_guide, substrate_recipe
 from mycodemo.cultivation.corrected import spawn_corrected
 from mycodemo.growth.forecast import forecast, forecast_warnings
 
 # --- constants ------------------------------------------------------------------------------
-TYPICAL_OYSTER_DAYS = (10, 14)        # usemycro.com guidance, the same range the Grow Log uses
 MATERIAL_SPECIES = "Blue Oyster"      # the species in our material data (Pleurotus ostreatus)
 PRODUCTS = ["Foam", "Acoustic board", "Game pieces"]
 # environment: label -> (containers, dry substrate per container in kg); sizes are our pretend defaults
@@ -45,17 +43,17 @@ COLONISING_STAGES = {"Food": ("Inoculated", "Colonising"), "Materials": ("Coloni
 AFTER_COLONISATION = {"Food": "Fruiting", "Materials": "Post-treatment"}
 BASELINE, SPAWN_PCT, MOISTURE = "masters", 10, 60   # baseline recipe (50/50 hardwood sawdust + soy hull, 1 % gypsum)
 HUMIDITY_RANGE = (80.0, 95.0)         # % RH wanted while colonising; out of range is only ever a Warning
-CONSENSUS_CSV = Path.home() / "Desktop/MycoMaterials/germini/colonisation_consensus.csv"   # outside the repo
 # Temperature rule (our assumption, see temperature_factor): the typical days hold at the optimum, the growth
 # rate falls in straight lines to zero at the biological limits. The 10-35 °C limits are the "biological range"
-# stated for Pleurotus in the consensus table; the optimum is the median of the table's optima.
+# stated for Pleurotus in the consensus table; the optimum is incubation_temp_C opt of the baseline row.
 BIOLOGICAL_RANGE = {"Pleurotus": (10.0, 35.0)}
-FALLBACK_OPTIMUM = {"Pleurotus": 25.0}   # used when the consensus table is not on this machine
+# recipe preset -> substrate_code in the baseline guide (the baseline recipe is a masters mix)
+PRESET_SUBSTRATE = {"masters": "masters_mix", "suppsaw": "sawdust", "straw": "straw"}
 RATE_FLOOR = 0.15                     # slowest relative growth rate we allow, so days never run away
 MAX_NUDGE = 1.3                       # 1-2 photos move the estimate by at most 30 %
 SOURCES = ("typical range", "our model", "your photos", "preview")
 MIN_PHOTOS = 3                        # the Colonisation forecast takes over from here
-STAGE_TARGET = 0.90                   # "colonised" = 90 %
+STAGE_TARGET = 0.90                   # 90 % of the photo is a surface marker, not the end of stage 1 (Fully colonised)
 
 
 # --- batch record ---------------------------------------------------------------------------
@@ -175,6 +173,7 @@ class Result:
     warnings: Step                        # value = list of messages
     mould_check: Step
     outcome: Step                         # yield estimate (Food) or Material strength (Materials)
+    fruiting: Step | None = None          # Stage 2 from the consensus guide (Food only)
 
 
 # --- species ----------------------------------------------------------------------------------
@@ -190,20 +189,17 @@ def choice_label(batch):
     return batch.choice or ""
 
 
-def colonisation_days(row):
-    """(min, max) days to colonise at the best temperature, or None when we have no range for that species.
-    Only the oyster (Pleurotus) range is known."""
-    if row is not None and row["latin"].startswith("Pleurotus"):
-        return TYPICAL_OYSTER_DAYS
-    return None
-
-
-def days_to_fruit(row):
-    """(min, max) days from the species' ``timeToFruit`` text, e.g. '10–14 days' -> (10, 14)."""
+def baseline_row(batch):
+    """(row, note) of the ref_2 baseline for the chosen species on the recipe's substrate, or None when the
+    species is custom or not in the guide. Species without a row for that substrate fall back to sawdust."""
+    row = species_row(batch)
     if row is None:
         return None
-    nums = [int(n) for n in re.findall(r"\d+", row["timeToFruit"])[:2]]
-    return (nums[0], nums[-1]) if nums else None
+    preset = (batch.recipe or {}).get("preset", BASELINE)
+    try:
+        return baseline_guide.row(row["latin"], PRESET_SUBSTRATE.get(preset, "masters_mix"))
+    except KeyError:
+        return None
 
 
 def be_percent(row):
@@ -262,26 +258,10 @@ def parse_temp(text):
     return lo, (opt if not np.isnan(opt) else mid), hi
 
 
-@cache
-def genus_optimum(genus="Pleurotus", path=CONSENSUS_CSV):
-    """(optimum °C, where it came from): median of the table's optima for that genus, else the built-in value."""
-    try:
-        raw = pd.read_csv(path)
-        opts = [parse_temp(t)[1] for sp, t in zip(raw["Species"], raw["Incubation_Temp_C"])
-                if str(sp).startswith(genus)]
-        opts = [o for o in opts if not np.isnan(o)]
-        if opts:
-            return float(np.median(opts)), "consensus table"
-    except (OSError, KeyError, ValueError):
-        pass
-    return FALLBACK_OPTIMUM[genus], "built-in value (consensus table not found)"
-
-
-def temperature_factor(temp_c, genus="Pleurotus"):
-    """Relative growth rate at temp_c: 1 at the optimum, falling in straight lines to 0 at the biological limits.
+def temperature_factor(temp_c, opt, genus="Pleurotus"):
+    """Relative growth rate at temp_c: 1 at the optimum opt, falling in straight lines to 0 at the biological limits.
     Returns (factor, inside); outside the limits the factor is RATE_FLOOR and inside is False."""
     lo, hi = BIOLOGICAL_RANGE[genus]
-    opt = genus_optimum(genus)[0]
     if temp_c <= lo or temp_c >= hi:
         return RATE_FLOOR, False
     rate = (temp_c - lo) / (opt - lo) if temp_c < opt else (hi - temp_c) / (hi - opt)
@@ -318,27 +298,61 @@ def recipe_step(batch):
                 "typical range", note)
 
 
+def _source_text(row, c):
+    return (f"consensus guide {c['source']}, {row['evidence_type']}, confidence {c['confidence']}")
+
+
 def colonisation_estimate(batch, temp_c=None):
-    """Colonisation time estimate: the typical range, adjusted for temperature (planned one unless given)."""
-    row = species_row(batch)
-    base = colonisation_days(row)
-    if base is None:
-        return Step("Colonisation time estimate", None, "preview",
+    """Colonisation time estimate (stage 1, inoculation to Fully colonised): the consensus range, adjusted for
+    temperature (planned one unless given) for Pleurotus only."""
+    name = "Colonisation time estimate"
+    br = baseline_row(batch)
+    if br is None:
+        return Step(name, None, "preview",
                     "We have no colonisation range for this mushroom yet, so no estimate is shown.")
+    row, row_note = br
+    c = baseline_guide.colonisation(row)
+    d = c["colonisation_days"]
+    base = (d["min"], d["max"])
+    where = f"Source: {_source_text(row, c)}. Row used: {row_note}."
     temp_c = batch.temp_c if temp_c is None else temp_c
+    value = {"days": base, "typical": d["typical"], "factor": 1.0, "temp_c": temp_c, "row": row_note,
+             "source_text": _source_text(row, c)}
+    pleurotus = row["species"].startswith("Pleurotus")
     if temp_c is None:
-        return Step("Colonisation time estimate", {"days": base, "factor": 1.0, "temp_c": None}, "typical range",
-                    "Typical oyster range (usemycro.com guidance); no temperature chosen yet.")
-    factor, inside = temperature_factor(temp_c)
-    days = (base[0] / factor, base[1] / factor)
-    opt, where = genus_optimum()
-    note = (f"Typical oyster range {base[0]}–{base[1]} days (usemycro.com guidance), assumed to hold at the "
-            f"optimum ({opt:g} °C, {where}). At {temp_c:g} °C the growth rate is {factor:.0%} of that, so "
-            "days = typical ÷ rate. A rough rule of ours; the sources give ranges, not days at each temperature.")
+        return Step(name, {**value, "temp_c": None}, "typical range",
+                    f"Typical range {base[0]}–{base[1]} days (typical {d['typical']}); no temperature chosen yet. {where}")
+    if not pleurotus:
+        return Step(name, value, "typical range",
+                    f"Range {base[0]}–{base[1]} days (typical {d['typical']}). No temperature adjustment for this "
+                    f"genus: the guide holds only one range. {where}")
+    opt = c["incubation_temp_C"]["opt"]
+    factor, inside = temperature_factor(temp_c, opt)
+    value.update(days=(base[0] / factor, base[1] / factor), typical=d["typical"] / factor, factor=factor)
+    note = (f"Range {base[0]}–{base[1]} days (typical {d['typical']}), assumed to hold at the optimum ({opt:g} °C). "
+            f"At {temp_c:g} °C the growth rate is {factor:.0%} of that, so days = guide ÷ rate. A rough rule of ours; "
+            f"the guide gives ranges, not days at each temperature. {where}")
     if not inside:
         note += f" {temp_c:g} °C is outside the biological limits ({BIOLOGICAL_RANGE['Pleurotus'][0]:g}–" \
                 f"{BIOLOGICAL_RANGE['Pleurotus'][1]:g} °C): the slowest rate is used and growth may stall."
-    return Step("Colonisation time estimate", {"days": days, "factor": factor, "temp_c": temp_c}, "typical range", note)
+    return Step(name, value, "typical range", note)
+
+
+def fruiting_estimate(batch):
+    """Stage 2 from the consensus guide; every day count starts at the start of induction."""
+    name = "Fruiting"
+    br = baseline_row(batch)
+    if br is None:
+        return Step(name, None, "preview", "We have no fruiting data for this mushroom yet.")
+    row, row_note = br
+    f = baseline_guide.fruiting(row)
+    inferred = f["induction_evidence_status"] == "inferred_from_existing_columns"
+    c = baseline_guide.colonisation(row)
+    note = (f"Days count from the start of induction: pinning after {f['days_to_pinning']}, first harvest after "
+            f"{f['first_harvest']}. Source: {_source_text(row, c)}. Row used: {row_note}.")
+    if inferred:
+        note += " The induction actions are inferred from other columns of the guide, not stated in it."
+    return Step(name, {**f, "inferred": inferred, "row": row_note}, "typical range", note)
 
 
 def _photo_series(batch):
@@ -385,23 +399,30 @@ def colonisation_forecast(batch, est):
 
 
 def dates_step(batch, fc):
-    """Colonised (90%), then the harvest window (Food) or the start of post-treatment (Materials)."""
+    """Inoculation, Fully colonised (stage 1), then Start induction, Pinning and First harvest (Food, stage 2) or
+    the start of post-treatment (Materials)."""
     if fc.value is None:
         return Step("Dates", [], "preview", "No estimate yet for this mushroom, so there are no dates.")
-    start, row = batch.inoc_date, species_row(batch)
+    start = batch.inoc_date
     lo, hi = (round(d) for d in fc.value["day90_range"])
-    events = [("Inoculation", start, start),
-              ("Colonised (90%)", start + timedelta(days=lo), start + timedelta(days=hi))]
+    full = (start + timedelta(days=lo), start + timedelta(days=hi))
+    events = [("Inoculation", start, start), ("Fully colonised", *full)]
     note = f"Dates follow the {fc.name} ({fc.source})."
+    if fc.value["method"] in ("curve fit", "nudged"):
+        note += " The photo forecast gives the 90% surface-marker day, used here as the Fully colonised date."
     if batch.goal == "Food":
-        fruit = days_to_fruit(row)
-        if fruit:
-            events.append(("Harvest window", start + timedelta(days=lo + fruit[0]),
-                           start + timedelta(days=hi + fruit[1])))
+        fr = fruiting_estimate(batch)
+        if fr.value is None:
+            note += " No fruiting data is known for this mushroom, so there are no fruiting dates."
         else:
-            note += " No fruiting time is known for this mushroom, so there is no harvest window."
+            events.append(("Start induction", *full))
+            for label, d in (("Pinning", fr.value["days_to_pinning"]), ("First harvest", fr.value["first_harvest"])):
+                events.append((label, full[0] + timedelta(days=d), full[1] + timedelta(days=d)))
+            note += (" Start induction is the same day as Fully colonised. The guide has one typical value per fruiting "
+                     "step, so the Pinning and First harvest ranges are the colonisation range shifted by those days "
+                     "(counted from the start of induction).")
     else:
-        events.append(("Post-treatment can start", start + timedelta(days=hi), start + timedelta(days=hi)))
+        events.append(("Post-treatment can start", full[1], full[1]))
     return Step("Dates", events, fc.source, note)
 
 
@@ -434,15 +455,17 @@ def warnings_step(batch, est, fc):
         res = forecast(t, c) if len(t) >= 2 else {"params": None, "day90": np.nan, "day95": np.nan}
         msgs += forecast_warnings(t, c, res) if len(t) >= 2 else \
             [f"Only {len(t)} photo(s): at least {MIN_PHOTOS} are needed for a forecast you can trust."]
-    row = species_row(batch)
-    if row is not None:
-        lo, hi = row["colonizeC"]
+    br = baseline_row(batch)
+    if br is not None:
+        r = br[0]
+        inc = baseline_guide.colonisation(r)["incubation_temp_C"]
+        lo, hi = inc["min"], inc["max"]
         temps = ([("planned", batch.temp_c)] if batch.temp_c is not None else []) + \
                 [(k.date.isoformat(), k.temp_c) for k in batch.conditions if k.temp_c is not None]
         for when, tc in temps:
             if not lo <= tc <= hi:
-                msgs.append(f"Temperature {tc:g} °C ({when}) is outside the colonisation range of {row['name']} "
-                            f"({lo}–{hi} °C): colonisation will be slower, or may stall.")
+                msgs.append(f"Temperature {tc:g} °C ({when}) is outside the colonisation range of {r['common_name']} "
+                            f"({lo}–{hi} °C, consensus guide): colonisation will be slower, or may stall.")
     for k in batch.conditions:
         if k.rh_pct is not None and not HUMIDITY_RANGE[0] <= k.rh_pct <= HUMIDITY_RANGE[1]:
             msgs.append(f"Humidity {k.rh_pct:g}% ({k.date.isoformat()}) is outside {HUMIDITY_RANGE[0]:g}–"
@@ -486,10 +509,10 @@ def outcome_step(batch):
 
 
 def days_to_next_stage(batch, cover, temp_c):
-    """Per-photo card: days left until 90 % colonised at temp_c, from this photo's coverage (0-1).
+    """Per-photo card: days left until 90 % of the photo is covered (a surface marker) at temp_c, from this photo's coverage (0-1).
     Always a rough range: value (low, high) days, or None without an estimate."""
     est = colonisation_estimate(batch, temp_c)
-    name = "Days to 90% colonised (rough)"
+    name = "Days to 90% surface coverage (rough)"
     if est.value is None:
         return Step(name, None, "preview", est.note)
     if cover >= STAGE_TARGET:
@@ -511,4 +534,5 @@ def run(batch):
     warns = warnings_step(batch, est, fc)
     mould = mould_check_step(batch)
     outcome = outcome_step(batch)
-    return Result(recipe, est, fc, dates, ready, warns, mould, outcome)
+    fruit = fruiting_estimate(batch) if batch.goal == "Food" else None
+    return Result(recipe, est, fc, dates, ready, warns, mould, outcome, fruit)
