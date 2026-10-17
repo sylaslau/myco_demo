@@ -119,3 +119,26 @@ def temp_check(temp: float, lo: float, hi: float) -> str:
 def spawn_on_our_basis(pct_wet: float) -> float:
     """Spawn as % of wet substrate -> % of (wet substrate + spawn)."""
     return pct_wet / (100 + pct_wet) * 100
+
+
+def matches(substrate_code: str, temp: float) -> pd.DataFrame:
+    """Rows on this substrate whose incubation range includes temp (inclusive), one per species."""
+    df = load()
+    hit = df[(df["substrate_code"] == substrate_code)
+             & (df["incubation_temp_min_C"] <= temp) & (temp <= df["incubation_temp_max_C"])]
+    return hit.reset_index(drop=True)
+
+
+def stages(r: pd.Series) -> pd.DataFrame:
+    """Stage timeline in days since inoculation: stage, start_day (min), typical_day, end_day (max).
+
+    Start induction is the same day as Fully colonised; Pinning and First harvest add the
+    typical days counted from the start of induction (same numbers as pipeline.dates_step).
+    """
+    d = colonisation(r)["colonisation_days"]
+    f = fruiting(r)
+    rows = [("Inoculation", 0, 0, 0), ("Fully colonised", d["min"], d["typical"], d["max"]),
+            ("Start induction", d["min"], d["typical"], d["max"])]
+    for label, shift in (("Pinning", f["days_to_pinning"]), ("First harvest", f["first_harvest"])):
+        rows.append((label, d["min"] + shift, d["typical"] + shift, d["max"] + shift))
+    return pd.DataFrame(rows, columns=["stage", "start_day", "typical_day", "end_day"])

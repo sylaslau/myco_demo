@@ -95,3 +95,27 @@ def test_fruiting_has_induction_text():
     assert f["induction_actions"]["overview"]
     assert f["first_harvest"] >= f["days_to_pinning"]
     assert f["induction_evidence_status"] == "source_supported"
+
+
+def test_matches_filters_by_substrate_and_incubation_range():
+    hit = bg.matches("sawdust", 24)
+    assert not hit.empty and set(hit["substrate_code"]) == {"sawdust"}
+    assert ((hit["incubation_temp_min_C"] <= 24) & (24 <= hit["incubation_temp_max_C"])).all()
+    assert bg.matches("sawdust", -5).empty
+
+
+def test_stages_agree_with_pipeline_dates_step_for_blue_oyster():
+    from datetime import date, timedelta
+
+    from mycodemo import pipeline
+
+    batch = pipeline.Batch(goal="Food", choice="Blue Oyster", inoc_date=date(2026, 1, 1))
+    row, _ = pipeline.baseline_row(batch)
+    st_ = bg.stages(row).set_index("stage")
+    est = pipeline.colonisation_estimate(batch)
+    fc = pipeline.colonisation_forecast(batch, est)
+    events = pipeline.dates_step(batch, fc).value
+    assert [e[0] for e in events] == list(st_.index)
+    for label, start, end in events:
+        assert start == batch.inoc_date + timedelta(days=int(st_.loc[label, "start_day"]))
+        assert end == batch.inoc_date + timedelta(days=int(st_.loc[label, "end_day"]))

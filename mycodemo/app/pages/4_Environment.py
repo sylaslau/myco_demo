@@ -10,7 +10,7 @@ st.set_page_config(page_title="Where does it/ do they live?",
                    page_icon="📦", layout="wide")
 flow.init()
 ss = st.session_state
-flow.need("choice", "What do you want to grow?", "pages/1_What_to_grow.py")
+flow.need("choice", "What do you want to grow?", "pages/3_What_to_grow.py")
 for key, value in {"env_where": None, "env_size": {}, "env_container": None, "rh_pct": 80.0}.items():
     ss.setdefault(key, value)
 
