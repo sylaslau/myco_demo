@@ -54,6 +54,10 @@ OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE
 SOFTWARE.
 ```
 
+### Cultivation baseline (NotebookLM extraction, ref_2)
+
+- `data/processed/cultivation_baseline.csv` and `cultivation_guide_text.csv` come from `mushroom_baseline_ref_2.csv` (NotebookLM extraction from Stamets 2000, Penn State Extension, ICAR-DMR, MushWorld and others; values checked by row, not by page). Lookup: `mycodemo/cultivation/baseline_guide.py`.
+
 ## Considered and not used (no code or data copied)
 
 | Source | Licence (as read) | Decision |
