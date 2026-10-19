@@ -131,9 +131,9 @@ class ConsensusModel:
             raise ValueError("temperature_basis must be air, substrate_core or unknown")
         band = s["review_temperature_optima"].get(row.species, {}).get(temperature_basis)
         band_source = "review optimum band"
-        if band is None and temperature_basis == "substrate_core":
+        if band is None and temperature_basis in ("air", "substrate_core"):
             band = (float(row.incubation_temp_opt_C),) * 2
-            band_source = "reference optimum treated as core temperature: demo basis assumption"
+            band_source = "consensus optimum (ref_2), basis not stated in source: demo assumption"
         if temperature_c is None:
             notes.append("Temperature omitted: reference scenario, no adjustment.")
         else:

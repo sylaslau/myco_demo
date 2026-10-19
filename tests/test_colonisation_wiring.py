@@ -213,3 +213,18 @@ def test_materials_batch_still_works(cm):
     b = Batch(goal="Materials", choice="Foam", environment="Grow bag (about 3 kg)", inoc_date=START, temp_c=19.0)
     r = run(b)
     assert [n for n, _, _ in r.dates.value] == ["Inoculation", pipeline.ENDPOINT_LABEL, "Post-treatment can start"]
+
+
+@pytest.mark.parametrize("species, substrate", [("Pleurotus djamor", "straw"), ("Hericium erinaceus", "sawdust"),
+                                                 ("Flammulina velutipes", "sawdust")])
+def test_air_temperature_uses_consensus_optimum_when_review_has_no_band(cm, species, substrate):
+    # Pink Oyster, Lion's Mane, Enoki: no review air band, so the ref_2 optimum is the band
+    r = cm.estimate_days(species, substrate, 20.0, temperature_basis="air")
+    assert r["environment_rules"]["available"]
+    assert r["adjusted_t90_min_typ_max"] is not None
+    row = cm.references[(cm.references.species == species) & (cm.references.substrate_code == substrate)].iloc[0]
+    opt = float(row.incubation_temp_opt_C)
+    at_opt = cm.estimate_days(species, substrate, opt, temperature_basis="air")
+    assert at_opt["environment_rules"]["temperature_duration_factor"] == 1.0
+    assert "consensus optimum" in " ".join(at_opt["environment_rules"]["notes"])
+    assert not cm.estimate_days(species, substrate, 20.0, temperature_basis="unknown")["environment_rules"]["optimum_band"]
