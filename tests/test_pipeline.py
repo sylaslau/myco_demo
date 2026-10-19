@@ -8,11 +8,22 @@ import pytest
 from PIL import Image
 
 from mycodemo import pipeline
+from mycodemo.growth.consensus_estimate import ModelUnavailable
 from mycodemo.growth.coverage import photo_coverage, photo_quality, quality_message
 from mycodemo.growth.forecast import backup_from_json, backup_to_json, logistic
 from mycodemo.pipeline import Batch, Condition, Photo, run
 
 START = date(2026, 10, 8)
+END, MARK = pipeline.ENDPOINT_LABEL, pipeline.MARKER_LABEL
+
+
+@pytest.fixture(autouse=True)
+def fallback_maths(monkeypatch):
+    """These tests pin the fallback (ref_2 range + temperature rule, logistic fit); the 2.2/2.5 path is tested in
+    tests/test_colonisation_wiring.py."""
+    def missing():
+        raise ModelUnavailable("test: no 2.2 bundle")
+    monkeypatch.setattr(pipeline, "_consensus", missing)
 
 
 def food(**kw):
@@ -37,21 +48,21 @@ def event(result, label):
 def test_food_batch_steps_and_dates():
     r = run(food())
     assert r.recipe.value["rec"]["totals"]["total_dry"] > 0
-    assert r.colonisation_estimate.source == "typical range"
+    assert r.colonisation_estimate.source == "fallback: typical range"
     assert r.outcome.name == "Yield estimate" and r.outcome.value["kg"] > 0
-    assert [n for n, _, _ in r.dates.value] == ["Inoculation", "Fully colonised", "Start induction", "Pinning",
+    assert [n for n, _, _ in r.dates.value] == ["Inoculation", END, MARK, "Pinning",
                                                    "First harvest"]
-    a, b = event(r, "Fully colonised")
+    a, b = event(r, END)
     assert (a, b) == (START + timedelta(days=14), START + timedelta(days=22))   # cb03 at its optimum (24 °C)
-    assert event(r, "Start induction") == (a, b)
-    assert event(r, "First harvest") == (a + timedelta(days=9), b + timedelta(days=9))
+    assert event(r, MARK) == (a + timedelta(days=2), b + timedelta(days=2))     # project assumption: 90% day + 2
+    assert event(r, "First harvest") == (a + timedelta(days=11), b + timedelta(days=11))
     assert not any(n == "Colonised (90%)" for n, _, _ in r.dates.value)
     assert r.fruiting.name == "Fruiting" and r.fruiting.value["first_harvest"] == 9
 
 
 def test_materials_batch_has_post_treatment_and_strength():
     r = run(materials())
-    assert [n for n, _, _ in r.dates.value] == ["Inoculation", "Fully colonised", "Post-treatment can start"]
+    assert [n for n, _, _ in r.dates.value] == ["Inoculation", END, "Post-treatment can start"]
     assert r.harvest_readiness is None                         # Food only
     assert r.outcome.name == "Material strength"
     assert r.outcome.source in ("our model", "preview")        # preview only if the model data is missing here
@@ -92,7 +103,7 @@ def test_custom_species_is_a_preview():
 def test_zero_photos_uses_the_estimate():
     fc = run(food()).colonisation_forecast
     assert fc.value["method"] == "estimate" and fc.value["n_photos"] == 0
-    assert fc.source == "typical range"
+    assert fc.source == "fallback: typical range"
 
 
 def test_two_photos_nudge_the_estimate():
@@ -100,7 +111,7 @@ def test_two_photos_nudge_the_estimate():
     fast = run(food(photos=photos(2, t50=3.0))).colonisation_forecast
     slow = run(food(photos=photos(2, t50=12.0))).colonisation_forecast
     assert fast.value["method"] == slow.value["method"] == "nudged"
-    assert fast.source == "your photos"
+    assert fast.source == "fallback: photo curve" and "Fallback used" in fast.note
     assert fast.value["day90"] < base < slow.value["day90"]
     assert slow.value["day90"] <= base * pipeline.MAX_NUDGE + 1e-9          # capped at 30 %
     assert run(food(photos=photos(2, t50=3.0))).warnings.value             # "only 2 photos" warning
@@ -109,9 +120,9 @@ def test_two_photos_nudge_the_estimate():
 def test_four_photos_forecast_takes_over():
     r = run(food(photos=photos(4)))
     fc = r.colonisation_forecast
-    assert fc.value["method"] == "curve fit" and fc.source == "your photos" and fc.value["n_photos"] == 4
+    assert fc.value["method"] == "curve fit" and fc.source == "fallback: photo curve" and fc.value["n_photos"] == 4
     assert fc.value["day90"] == pytest.approx(6 + np.log(9) / 0.8, abs=0.5)   # logistic(k=0.8, t50=6) hits 90 % there
-    a, b = event(r, "Fully colonised")
+    a, b = event(r, END)
     assert a == b == START + timedelta(days=round(fc.value["day90"]))
 
 
@@ -131,7 +142,7 @@ def test_temperature_changes_the_estimate_and_the_dates():
     warm, cool, cold = (run(food(temp_c=t)) for t in (25.0, 18.0, 13.0))
     assert warm.colonisation_estimate.value["days"][0] < cool.colonisation_estimate.value["days"][0] \
         < cold.colonisation_estimate.value["days"][0]
-    assert event(warm, "Fully colonised")[1] < event(cold, "Fully colonised")[1]
+    assert event(warm, END)[1] < event(cold, END)[1]
 
 
 def test_temperature_factor_shape():

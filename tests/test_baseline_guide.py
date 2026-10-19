@@ -104,18 +104,28 @@ def test_matches_filters_by_substrate_and_incubation_range():
     assert bg.matches("sawdust", -5).empty
 
 
-def test_stages_agree_with_pipeline_dates_step_for_blue_oyster():
+def test_stages_agree_with_pipeline_dates_step_for_blue_oyster(monkeypatch):
+    """The ref_2 stage table against the dates step of the fallback maths. The pipeline's induction planning marker,
+    Pinning and First harvest sit POST_90_DAYS (the project's 2-day assumption) later than the table's days."""
     from datetime import date, timedelta
 
     from mycodemo import pipeline
+    from mycodemo.growth.consensus_estimate import ModelUnavailable
 
+    def missing():
+        raise ModelUnavailable("test")
+    monkeypatch.setattr(pipeline, "_consensus", missing)
     batch = pipeline.Batch(goal="Food", choice="Blue Oyster", inoc_date=date(2026, 1, 1))
     row, _ = pipeline.baseline_row(batch)
     st_ = bg.stages(row).set_index("stage")
     est = pipeline.colonisation_estimate(batch)
     fc = pipeline.colonisation_forecast(batch, est)
     events = pipeline.dates_step(batch, fc).value
-    assert [e[0] for e in events] == list(st_.index)
+    table = {"Inoculation": ("Inoculation", 0), pipeline.ENDPOINT_LABEL: ("Fully colonised", 0),
+             pipeline.MARKER_LABEL: ("Start induction", 2), "Pinning": ("Pinning", 2),
+             "First harvest": ("First harvest", 2)}
+    assert [e[0] for e in events] == list(table)
     for label, start, end in events:
-        assert start == batch.inoc_date + timedelta(days=int(st_.loc[label, "start_day"]))
-        assert end == batch.inoc_date + timedelta(days=int(st_.loc[label, "end_day"]))
+        stage, shift = table[label]
+        assert start == batch.inoc_date + timedelta(days=int(st_.loc[stage, "start_day"]) + shift)
+        assert end == batch.inoc_date + timedelta(days=int(st_.loc[stage, "end_day"]) + shift)

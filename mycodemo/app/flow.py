@@ -13,6 +13,10 @@ MATERIAL_SPECIES = pipeline.MATERIAL_SPECIES
 PRODUCTS, ENVIRONMENTS, BE_KEY = pipeline.PRODUCTS, pipeline.ENVIRONMENTS, pipeline.BE_KEY
 FULLY_COLONISED_NOTE = ("Start induction when the substrate is white all the way through, bottom included; "
                         "90% on a photo is only a surface marker.")
+ENDPOINT_ASSUMPTION_NOTE = (
+    "Project assumption, not a measured result: the consensus typical colonisation day is taken as **90% visible "
+    "coverage**, and the **Induction planning marker** is that day + 2 days. The day the substrate is white all the "
+    "way through, bottom included, cannot be predicted; check by eye before starting induction.")
 STAGES_FOOD = ["Inoculated", "Colonising", "Fruiting", "Harvested", "Contaminated"]
 STAGES_MATERIAL = ["Pre-treatment", "Colonisation", "Liquid fermentation", "Post-treatment", "Contaminated"]
 

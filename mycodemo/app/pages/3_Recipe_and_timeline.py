@@ -39,16 +39,23 @@ if est.is_preview:
     flow.preview("Colonisation time estimate", est.note)
 else:
     lo, hi = est.value["days"]
-    full = next((a, b) for n, a, b in dates.value if n == "Fully colonised")
-    c1, c2 = st.columns(2)
-    c1.metric("Fully colonised", f"{full[0].strftime('%d %b')} – {full[1].strftime('%d %b')}")
-    c2.metric("Duration", f"{lo:.0f}–{hi:.0f} days", help=f"Typical {est.value['typical']:.0f} days")
+    ev1 = {n: (a, b) for n, a, b in dates.value}
+    full = ev1[pipeline.ENDPOINT_LABEL]
+
+    def span1(a, b):
+        return f"{a.strftime('%d %b')} – {b.strftime('%d %b')}"
+
+    c1, c2, c3 = st.columns(3)
+    c1.metric(pipeline.ENDPOINT_LABEL, span1(*full), help="Project assumption")
+    mk = ev1.get(pipeline.MARKER_LABEL)
+    if mk:
+        c2.metric(pipeline.MARKER_LABEL, span1(*mk), help="Project assumption: the 90% day + 2 days")
+    c3.metric("Duration to 90%", f"{lo:.0f}–{hi:.0f} days", help=f"Typical {est.value['typical']:.0f} days")
     st.progress(0.0, text=f"Day 0 → day {hi:.0f}")
-    st.caption(flow.FULLY_COLONISED_NOTE)
+    st.caption(flow.ENDPOINT_ASSUMPTION_NOTE)
     flow.show_source(est)
     if fc.value is not None and fc.value["method"] != "estimate":
-        st.caption(f"Your photos have changed this: {fc.note} The photo forecast's 90% day is a surface marker, "
-                   "not the end of stage 1.")
+        st.caption(f"Your photos have changed this: {fc.note}")
     else:
         st.caption("Your photos in Monitor will update it into the Colonisation forecast.")
 
@@ -66,7 +73,7 @@ if fruit is not None:
             return a.strftime("%d %b") + ("" if a == b else f" – {b.strftime('%d %b')}")
 
         f1, f2, f3 = st.columns(3)
-        f1.metric("Start induction", span("Start induction"))
+        f1.metric(pipeline.MARKER_LABEL, span(pipeline.MARKER_LABEL), help="Project assumption: the 90% day + 2 days")
         f2.metric("Pinning", span("Pinning"), help=f"{fv['days_to_pinning']} days after the start of induction")
         f3.metric("First harvest", span("First harvest"), help=f"{fv['first_harvest']} days after the start of induction")
         ia = fv["induction_actions"]

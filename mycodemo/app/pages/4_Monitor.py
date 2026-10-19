@@ -561,11 +561,16 @@ if fc_.is_preview:
     flow.preview(fc_.name, fc_.note)
 else:
     lo_, hi_ = fc_.value["day90_range"]
-    k1, k2 = st.columns(2)
-    k1.metric("Fully colonised, expected on day", f"{lo_:.0f}" if round(lo_) == round(hi_) else f"{lo_:.0f}–{hi_:.0f}")
-    k2.metric("Based on", fc_.source)
+    post_ = fc_.value.get("post_90_days", pipeline.POST_90_DAYS)
+    k1, k2, k3 = st.columns(3)
+    k1.metric(pipeline.ENDPOINT_LABEL + ", expected on day",
+              f"{lo_:.0f}" if round(lo_) == round(hi_) else f"{lo_:.0f}–{hi_:.0f}", help="Project assumption")
+    k2.metric(pipeline.MARKER_LABEL + ", expected on day",
+              f"{lo_ + post_:.0f}" if round(lo_) == round(hi_) else f"{lo_ + post_:.0f}–{hi_ + post_:.0f}",
+              help="Project assumption: the 90% day + 2 days")
+    k3.metric("Based on", fc_.source)
     flow.show_source(fc_)
-    st.caption(flow.FULLY_COLONISED_NOTE + " The photo forecast's 90% day is a surface marker, not the end of stage 1.")
+    st.caption(flow.ENDPOINT_ASSUMPTION_NOTE)
 if dates_.value:
     st.dataframe(pd.DataFrame([{"Event": n_, "From": a_.isoformat(), "To": b_.isoformat()}
                                for n_, a_, b_ in dates_.value]), hide_index=True)

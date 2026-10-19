@@ -17,6 +17,7 @@ import pandas as pd
 
 from mycodemo.cultivation import FRUITING_CONDITIONS, SPECIES_BE, baseline_guide, substrate_recipe
 from mycodemo.cultivation.corrected import spawn_corrected
+from mycodemo.growth import consensus_estimate, forecast_update
 from mycodemo.growth.forecast import forecast, forecast_warnings
 
 # --- constants ------------------------------------------------------------------------------
@@ -51,9 +52,17 @@ BIOLOGICAL_RANGE = {"Pleurotus": (10.0, 35.0)}
 PRESET_SUBSTRATE = {"masters": "masters_mix", "suppsaw": "sawdust", "straw": "straw"}
 RATE_FLOOR = 0.15                     # slowest relative growth rate we allow, so days never run away
 MAX_NUDGE = 1.3                       # 1-2 photos move the estimate by at most 30 %
-SOURCES = ("typical range", "our model", "your photos", "preview")
+# "consensus model" / "photos + consensus model" = the 2.2 estimate and 2.5 update; the "fallback:" tags = the older
+# ref_2 range + temperature rule and logistic fit, used when the model files are missing or a call fails.
+SOURCES = ("typical range", "our model", "your photos", "preview", "consensus model", "photos + consensus model",
+           "fallback: typical range", "fallback: photo curve")
 MIN_PHOTOS = 3                        # the Colonisation forecast takes over from here
-STAGE_TARGET = 0.90                   # 90 % of the photo is a surface marker, not the end of stage 1 (Fully colonised)
+STAGE_TARGET = 0.90                   # 90 % of the photo is a surface marker, not the end of stage 1
+# Endpoint wording (project assumption, 10-18): the consensus typical colonisation day is taken as 90 % visible
+# coverage; the induction planning marker is that day + POST_90_DAYS (the bottom-white day cannot be predicted).
+ENDPOINT_LABEL = "90% visible (consensus day)"
+MARKER_LABEL = "Induction planning marker"
+POST_90_DAYS = 2
 
 
 # --- batch record ---------------------------------------------------------------------------
@@ -302,9 +311,61 @@ def _source_text(row, c):
     return (f"consensus guide {c['source']}, {row['evidence_type']}, confidence {c['confidence']}")
 
 
+@lru_cache(maxsize=2)
+def _load_consensus(path):
+    return consensus_estimate.load_bundle(path)
+
+
+def _consensus():
+    """The saved 2.2 model (newest bundle in models/colonisation); raises ModelUnavailable when it is missing."""
+    return _load_consensus(consensus_estimate.find_bundle())
+
+
+def _tag_fallback(step, reason):
+    """Mark a step from the older code as the fallback, in the source tag and the note."""
+    source = {"typical range": "fallback: typical range", "your photos": "fallback: photo curve"}.get(step.source, step.source)
+    note = step.note if step.is_preview else f"Fallback used ({reason}): the older range and curve are shown. {step.note}"
+    return Step(step.name, step.value, source, note)
+
+
+def _consensus_estimate(row, row_note, c, temp_c):
+    """2.2: typical day and range of 90 % visible coverage, with the temperature rule (room air, our assumption).
+    Raises ValueError when the model has no number for this temperature or species."""
+    cm = _consensus()
+    r = cm.estimate_days(row["species"], row["substrate_code"], temperature_c=temp_c, temperature_basis="air")
+    adj = r["adjusted_t90_min_typ_max"]
+    if adj is None:
+        raise ValueError(next((n for n in r["environment_rules"]["notes"] if "unavailable" in n),
+                              "no numeric adjusted estimate"))
+    lo, typ, hi = adj
+    value = {"days": (lo, hi), "typical": typ, "factor": r["environment_rules"]["temperature_duration_factor"],
+             "temp_c": temp_c, "row": row_note, "source_text": _source_text(row, c), "engine": "consensus",
+             "post_90_days": cm.post_90_days}
+    where = f"Source: {_source_text(row, c)}. Row used: {row_note}."
+    cond = f"at {temp_c:g} °C room air" if temp_c is not None else "with no temperature chosen yet (reference conditions)"
+    note = (f"Consensus regression (notebook 2.2): {ENDPOINT_LABEL} typically on day {typ:.0f} (range {lo:.0f}–{hi:.0f}) "
+            f"{cond}. Temperature rule: 5% slower per °C outside the optimum band, our assumption. The "
+            f"{MARKER_LABEL} is {cm.post_90_days:g} days later (project assumption). Not validated. {where}")
+    return Step("Colonisation time estimate", value, "consensus model", note)
+
+
 def colonisation_estimate(batch, temp_c=None):
-    """Colonisation time estimate (stage 1, inoculation to Fully colonised): the consensus range, adjusted for
-    temperature (planned one unless given) for Pleurotus only."""
+    """Colonisation time estimate (stage 1): the 2.2 consensus regression with its temperature rule. If the model
+    files are missing or the call fails, the older ref_2 range + temperature rule is used and the source tag says so."""
+    br = baseline_row(batch)
+    if br is None:
+        return _estimate_fallback(batch, temp_c)
+    row, row_note = br
+    temp_c = batch.temp_c if temp_c is None else temp_c
+    try:
+        return _consensus_estimate(row, row_note, baseline_guide.colonisation(row), temp_c)
+    except Exception as exc:   # missing files, no number at this temperature, anything else: never show nothing
+        return _tag_fallback(_estimate_fallback(batch, temp_c), f"2.2 model: {exc}")
+
+
+def _estimate_fallback(batch, temp_c=None):
+    """The ref_2 consensus range with the straight-line temperature rule (Pleurotus only): the estimate used before
+    the 2.2 model and still the fallback."""
     name = "Colonisation time estimate"
     br = baseline_row(batch)
     if br is None:
@@ -360,8 +421,64 @@ def _photo_series(batch):
     return np.array([p.day for p in ph], float), np.array([p.coverage for p in ph], float)
 
 
-def colonisation_forecast(batch, est):
-    """Colonisation forecast: our S-curve fit from 3 photos; 1-2 photos nudge the estimate; none = the estimate.
+def _consensus_forecast(batch, est, today):
+    """2.5: the 2.2 curve updated by dated photo coverage (one mean per day, quality-passed photos) and the condition
+    history. No photos = the 2.2 estimate for the same conditions. Raises ValueError when 2.5 gives no number."""
+    row, _ = baseline_row(batch)
+    cm = _consensus()
+    initial = {"temperature_c": batch.temp_c, "temperature_basis": "air", "humidity_pct": None, "drying_exposed": False}
+    start = batch.inoc_date
+    by_day = {}
+    for p in batch.photos:
+        if p.day >= 0 and not p.quality:
+            by_day.setdefault(p.day, []).append(p.coverage)
+    coverage = [{"day": d, "coverage_fraction": float(np.mean(v))} for d, v in sorted(by_day.items())]
+    logged = {}
+    for k in sorted(batch.conditions, key=lambda k: k.date):
+        day = (k.date - start).days
+        if day >= 0:
+            logged.setdefault(day, {}).update({f: v for f, v in (("temperature_c", k.temp_c), ("humidity_pct", k.rh_pct))
+                                               if v is not None})
+    records = [{"day": d, **v} for d, v in sorted(logged.items()) if v]
+    today = date.today() if today is None else today
+    current = float(max([(today - start).days, 0] + list(by_day) + list(logged)))
+    fm = forecast_update.ForecastModel.from_consensus(cm, row["species"], row["substrate_code"], initial)
+    history = forecast_update.prepare_conditions(records, current, initial)
+    future = forecast_update.merged_conditions(history[-1]["conditions"], {})
+    obs, _ = forecast_update.prepare_coverage(coverage, current, rules=fm.rules)
+    f = fm.forecast_batch(obs, history, future, current)
+    t90 = f["t90_day_min_typ_max"]
+    if t90 is None:
+        raise ValueError(f"the 2.5 update gave no number ({f['status']})")
+    lo, typ, hi = t90
+    n = len(batch.photos)
+    value = {"day90": typ, "day90_range": (lo, hi), "method": "consensus update" if obs else "estimate", "n_photos": n,
+             "engine": "consensus", "status": f["status"], "post_90_days": cm.post_90_days}
+    if not obs:
+        return Step("Colonisation forecast", value, "consensus model",
+                    "No usable photos yet, so this is the Colonisation time estimate for your logged conditions. "
+                    + est.note)
+    return Step("Colonisation forecast", value, "photos + consensus model",
+                f"Consensus curve (notebook 2.5) anchored to the 2.2 day and updated by {len(obs)} dated photo "
+                f"coverage value(s) (HSV Photo coverage, not reviewed) and your logged conditions: status "
+                f"{f['status'].replace('_', ' ')}. A planning scenario, not a validated model.")
+
+
+def colonisation_forecast(batch, est, today=None):
+    """Colonisation forecast: the 2.5 update of the 2.2 estimate by photos and conditions. If the model files are
+    missing or the call fails, the older logistic fit is used (and says so). `today` is for tests."""
+    if est.value is not None and est.value.get("engine") == "consensus":
+        try:
+            return _consensus_forecast(batch, est, today)
+        except Exception as exc:
+            return _tag_fallback(_forecast_fallback(batch, est), f"2.5 model: {exc}")
+    step = _forecast_fallback(batch, est)
+    # a photo curve over a fallback estimate is itself the fallback; with no photos the estimate's own tag already says so
+    return _tag_fallback(step, "the 2.2 estimate was not available") if step.source == "your photos" else step
+
+
+def _forecast_fallback(batch, est):
+    """Our S-curve fit from 3 photos; 1-2 photos nudge the estimate; none = the estimate (the older code).
     value: {'day90', 'day90_range', 'method', ...} (days since inoculation)."""
     t, c = _photo_series(batch)
     n = len(t)
@@ -399,28 +516,32 @@ def colonisation_forecast(batch, est):
 
 
 def dates_step(batch, fc):
-    """Inoculation, Fully colonised (stage 1), then Start induction, Pinning and First harvest (Food, stage 2) or
-    the start of post-treatment (Materials)."""
+    """Inoculation, the 90% visible (consensus day), then the Induction planning marker 2 days later, Pinning and
+    First harvest (Food, stage 2) or the start of post-treatment (Materials)."""
     if fc.value is None:
         return Step("Dates", [], "preview", "No estimate yet for this mushroom, so there are no dates.")
     start = batch.inoc_date
+    post = int(round(fc.value.get("post_90_days", POST_90_DAYS)))
     lo, hi = (round(d) for d in fc.value["day90_range"])
     full = (start + timedelta(days=lo), start + timedelta(days=hi))
-    events = [("Inoculation", start, start), ("Fully colonised", *full)]
-    note = f"Dates follow the {fc.name} ({fc.source})."
-    if fc.value["method"] in ("curve fit", "nudged"):
-        note += " The photo forecast gives the 90% surface-marker day, used here as the Fully colonised date."
+    marker = (start + timedelta(days=lo + post), start + timedelta(days=hi + post))
+    events = [("Inoculation", start, start), (ENDPOINT_LABEL, *full)]
+    note = (f"Dates follow the {fc.name} ({fc.source}). {ENDPOINT_LABEL} is the consensus typical day taken as 90% "
+            f"visible coverage: a project assumption.")
+    if fc.value["method"] in ("curve fit", "nudged", "consensus update"):
+        note += " Your photos moved it."
     if batch.goal == "Food":
         fr = fruiting_estimate(batch)
         if fr.value is None:
             note += " No fruiting data is known for this mushroom, so there are no fruiting dates."
         else:
-            events.append(("Start induction", *full))
+            events.append((MARKER_LABEL, *marker))
             for label, d in (("Pinning", fr.value["days_to_pinning"]), ("First harvest", fr.value["first_harvest"])):
-                events.append((label, full[0] + timedelta(days=d), full[1] + timedelta(days=d)))
-            note += (" Start induction is the same day as Fully colonised. The guide has one typical value per fruiting "
-                     "step, so the Pinning and First harvest ranges are the colonisation range shifted by those days "
-                     "(counted from the start of induction).")
+                events.append((label, marker[0] + timedelta(days=d), marker[1] + timedelta(days=d)))
+            note += (f" {MARKER_LABEL} = that day + {post} days (project assumption; the day the bottom turns white "
+                     "cannot be predicted, check by eye). The guide has one typical value per fruiting step, so the "
+                     "Pinning and First harvest ranges are the marker range shifted by those days (counted from the "
+                     "start of induction).")
     else:
         events.append(("Post-treatment can start", full[1], full[1]))
     return Step("Dates", events, fc.source, note)
