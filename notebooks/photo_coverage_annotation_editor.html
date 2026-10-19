@@ -22,7 +22,8 @@ button.green{border-color:#1f9d63;background:#e3f8ec}button.green.active{backgro
 canvas{display:block;max-width:100%;height:auto;margin:10px auto;cursor:crosshair;background:#e9edeb;border:1px solid #d1dcd5;touch-action:none}
 .hint{font-size:13px;color:#52695b;line-height:1.5;margin:6px 0 0}
 .check{display:flex;gap:8px;align-items:flex-start;font-size:14px;font-weight:400}.check input{margin-top:4px}
-#status{margin:12px 0;padding:10px;border-radius:6px;background:#edf4ef;min-height:40px}
+#status{margin:14px 0;background:#fff4da;border:1px solid #e8d49b;border-radius:10px;padding:14px 18px;line-height:1.4;font-size:19px;font-weight:700;min-height:56px}
+.prevrow{display:flex;flex-wrap:wrap;align-items:center;justify-content:space-between;gap:10px 24px;margin:6px 0 0}.prevrow .check{margin:0;font-size:19px;font-weight:600;align-items:center}.prevrow .check input{width:24px;height:24px;margin:0}#pct{font-size:26px;font-weight:700;color:#173b31}.sampletext{font-size:15px;color:#33493f;margin:12px 0 6px;line-height:1.5}
 .legend{display:flex;flex-wrap:wrap;gap:6px 18px;font-size:13px;color:#33493f;margin:4px 0 12px}
 .legend i{display:inline-block;vertical-align:middle;margin-right:6px}
 .sw-line{width:20px;height:0;border-top:3px solid}.sw-dot{width:11px;height:11px;border-radius:50%;border:1.5px solid #fff;box-shadow:0 0 0 1px #888}.sw-box{width:16px;height:12px;border-radius:2px}
@@ -48,16 +49,17 @@ details{margin:14px 0;border:1px solid #d8e1da;border-radius:8px;padding:10px 14
 <h2>3. Trace and label the substrate</h2>
 <label class="check"><input id="whole" type="checkbox"><span>Substrate fills the whole photo</span></label>
 <div class="group"><span class="gl">Outline</span><div class="row"><button data-tool="roi" id="redraw">Redraw outline</button><button id="guess">Guess outline again</button><button id="finish">Finish outline (Enter)</button><button id="clearPending">Cancel</button></div></div>
+<p class="sampletext">Click a few typical spots for both mycelium and substrate. The program finds every part that looks similar.</p>
 <div class="samples">
-<div><button class="pink" data-tool="mycelium_seed">Click on mycelium</button><p class="hint">Click a few typical spots. The program finds every part of the substrate that looks similar.</p></div>
-<div><button class="green" data-tool="substrate_seed">Click on bare substrate</button><p class="hint">Click a few typical spots. The program finds every part of the substrate that looks similar.</p></div>
+<div><button class="pink" data-tool="mycelium_seed">Click on mycelium</button></div>
+<div><button class="green" data-tool="substrate_seed">Click on bare substrate</button></div>
 </div>
 <div class="group"><span class="gl">Correction brush</span><div class="brush"><button class="pink" data-tool="paint_mycelium">Paint mycelium</button><button class="green" data-tool="paint_substrate">Paint bare substrate</button><label>Size <input id="brush" type="range" min="1" max="20" value="4"></label></div><p class="hint">Use the brush when the result is wrong.</p></div>
 <div class="row"><button id="undo">Undo</button><button id="clearSeeds">Clear clicks</button><button id="clearStrokes">Clear brush strokes</button></div>
 <div id="status">Choose a photo to begin.</div>
+<div class="prevrow"><label class="check"><input id="showPrev" type="checkbox" checked><span>Show the preview colours</span></label><div id="pct"></div></div>
 <canvas id="canvas" width="900" height="520"></canvas>
 <div class="legend"><span><i class="sw-line" style="border-color:#00d9df"></i>cyan = outline</span><span><i class="sw-dot" style="background:#ff21ce"></i>pink dot = mycelium sample</span><span><i class="sw-dot" style="background:#00f594"></i>green dot = bare substrate sample</span><span><i class="sw-box" style="background:#e114b9"></i>magenta = counted as mycelium</span><span><i class="sw-box" style="background:#ffb000"></i>amber = not sure</span></div>
-<label class="check"><input id="showPrev" type="checkbox" checked><span>Show the preview colours</span></label>
 <details id="advanced"><summary>Advanced</summary>
 <label for="method">Method</label><select id="method"><option value="auto">Auto: samples, otherwise clustering</option><option value="seeded">Samples only (both kinds required)</option><option value="cluster">Colour + texture clustering</option><option value="hsv">HSV comparison baseline</option><option value="manual">Manual correction polygons</option></select>
 <label for="radius">Sample size (% of the short side)</label><input id="radius" type="number" min="0.1" max="10" step="0.1" value="1.5">
@@ -67,8 +69,8 @@ details{margin:14px 0;border:1px solid #d8e1da;border-radius:8px;padding:10px 14
 </details>
 <h2 class="space">4. Save</h2>
 <label class="check"><input id="reviewed" type="checkbox"><span>I checked the result</span></label>
-<div class="row space"><button id="download" class="primary">Download annotation JSON</button></div>
-<label for="annotationFile">Reload saved annotations</label><input id="annotationFile" type="file" accept=".json,application/json">
+<div class="row space"><button id="download" class="primary">Save</button></div>
+<label for="annotationFile">Open a saved file</label><input id="annotationFile" type="file" accept=".json,application/json">
 </section></main>
 <script>
 'use strict';
@@ -175,7 +177,8 @@ function refreshPreview(){const p=current();if(p?.image)p.prev=computePreview(p)
 
 /* ---- drawing ---- */
 function polygon(points,colour,fill=true,close=true,dots=true){if(!points?.length)return;ctx.beginPath();points.forEach(([x,y],i)=>{i?ctx.lineTo(x*canvas.width,y*canvas.height):ctx.moveTo(x*canvas.width,y*canvas.height);});if(close)ctx.closePath();ctx.strokeStyle=colour;ctx.lineWidth=2;if(fill&&close){ctx.globalAlpha=.17;ctx.fillStyle=colour;ctx.fill();ctx.globalAlpha=1;}ctx.stroke();if(dots)for(const [x,y] of points){ctx.beginPath();ctx.arc(x*canvas.width,y*canvas.height,3,0,Math.PI*2);ctx.fillStyle=colour;ctx.fill();}}
-function draw(){ctx.clearRect(0,0,canvas.width,canvas.height);const p=current();
+function setPct(p){$('pct').textContent=p?.prev&&p.prev.pct!==undefined?p.prev.pct.toFixed(1)+'% colonised (preview)':'% colonised (preview): –';}
+function draw(){ctx.clearRect(0,0,canvas.width,canvas.height);const p=current();setPct(p);
 if(!p?.image){ctx.fillStyle='#52695b';ctx.font='20px system-ui';ctx.fillText('Choose a substrate photo',35,65);return;}
 const W=canvas.width,H=canvas.height,r=p.record;ctx.drawImage(p.image,0,0,W,H);
 if($('showPrev').checked&&p.prev?.overlay)ctx.drawImage(p.prev.overlay,0,0,W,H);
@@ -186,8 +189,7 @@ if(r.roi?.points){polygon(r.roi.points,'#00d9df',false,true,false);for(const [x,
 ctx.globalAlpha=.5;for(const s of r.strokes||[]){ctx.fillStyle=ctx.strokeStyle=s.label==='mycelium'?'#ff21ce':'#00f594';strokePath(ctx,s,W,H,s.size*Math.min(W,H));}ctx.globalAlpha=1;
 for(const s of r.seeds||[]){ctx.beginPath();ctx.arc(s.x*W,s.y*H,5,0,Math.PI*2);ctx.fillStyle=s.label==='mycelium'?'#ff21ce':'#00f594';ctx.fill();ctx.strokeStyle='#fff';ctx.lineWidth=1.5;ctx.stroke();}
 polygon(pending,'#fff',false,false);
-const txt=p.prev?(p.prev.status||(p.prev.pct.toFixed(1)+'% colonised (preview)')):'';
-if(txt){ctx.font='bold 16px system-ui';const tw=ctx.measureText(txt).width;ctx.fillStyle='rgba(23,59,49,.85)';ctx.beginPath();ctx.roundRect?ctx.roundRect(10,10,tw+20,32,8):ctx.rect(10,10,tw+20,32);ctx.fill();ctx.fillStyle='#fff';ctx.fillText(txt,20,32);}}
+}
 
 /* ---- fields and photo list ---- */
 function readFields(){const p=current();if(!p)return;const r=p.record;
@@ -239,7 +241,7 @@ if(down){down=null;click(x,y);}});
 function click(x,y){const p=current();if(!p)return;const r=p.record;
 if(tool.endsWith('_seed')){if(!r.full_frame_substrate_confirmed&&!r.roi?.points){message('Draw the outline first (Redraw outline), or tick "Substrate fills the whole photo".');return;}
 if(!r.full_frame_substrate_confirmed&&!inside(r.roi.points,x,y)){message('That spot is outside the outline. Click inside it.');return;}
-pushUndo();r.seeds.push({label:tool==='mycelium_seed'?'mycelium':'substrate',x,y,radius:Math.min(.1,Math.max(.001,Number($('radius').value)/100))});changed();message('Spot added. A few spots of each kind work best.');}
+pushUndo();r.seeds.push({label:tool==='mycelium_seed'?'mycelium':'substrate',x,y,radius:Math.min(.1,Math.max(.001,Number($('radius').value)/100))});changed();const n=k=>r.seeds.filter(s=>s.label===k).length;message(!n('substrate')?'Now click on bare substrate to see the result.':!n('mycelium')?'Now click on mycelium to see the result.':'Spot added. A few spots of each kind work best.');}
 else if(tool.startsWith('paint_')){}
 else{pending.push([x,y]);draw();message(pending.length+' corners. Press Finish when the shape is complete.');}}
 function finish(){const p=current();if(!p)return;if(pending.length<3){message('A shape needs at least three corners.');return;}if(selfCrosses(pending)){message('The edges cross each other. Cancel and try again.');return;}pushUndo();
@@ -259,8 +261,8 @@ $('method').addEventListener('change',()=>{readFields();changed();});
 $('whole').addEventListener('change',()=>{const p=current();if(!p)return;pushUndo();if($('whole').checked){delete p.record.roi;delete p.record.roi_mask_path;}readFields();if(!$('whole').checked&&p.image&&!p.record.roi){p.noGuess=false;guessOutline(p);}changed();});
 
 /* ---- save and reload ---- */
-$('download').onclick=()=>{readFields();if(!photos.length){message('Choose at least one photo before downloading.');return;}if(pending.length){message('Finish or cancel the unfinished shape first.');return;}
-const doc={schema_version:1,coordinate_system:'normalized EXIF-oriented image',photos:photos.map(p=>clone(p.record))};const a=document.createElement('a');a.href=URL.createObjectURL(new Blob([JSON.stringify(doc,null,2)],{type:'application/json'}));a.download='photo_annotations.json';a.click();setTimeout(()=>URL.revokeObjectURL(a.href),1000);message('Downloaded photo_annotations.json. Use it as ANNOTATION_JSON in notebook 2.4.');};
+$('download').onclick=()=>{readFields();if(!photos.length){message('Choose at least one photo before saving.');return;}if(pending.length){message('Finish or cancel the unfinished shape first.');return;}
+const doc={schema_version:1,coordinate_system:'normalized EXIF-oriented image',photos:photos.map(p=>clone(p.record))};const a=document.createElement('a');a.href=URL.createObjectURL(new Blob([JSON.stringify(doc,null,2)],{type:'application/json'}));a.download='photo_annotations.json';a.click();setTimeout(()=>URL.revokeObjectURL(a.href),1000);message('Saved to Downloads as photo_annotations.json.');};
 $('annotationFile').addEventListener('change',async e=>{const file=e.target.files[0];if(!file)return;try{const doc=JSON.parse(await file.text());if(doc.schema_version!==1||!Array.isArray(doc.photos))throw new Error('Unsupported annotation file');readFields();
 for(const record of doc.photos){const existing=photos.find(p=>p.record.image_path===record.image_path||baseName(p.record.image_path)===baseName(record.image_path));if(existing){existing.record=base(record);existing.prev=null;}else photos.push({record:base(record),image:null});}
 if(photos.length){index=-1;show(0);}}catch(error){message('Import failed: '+error.message);}e.target.value='';});
