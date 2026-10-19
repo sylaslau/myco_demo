@@ -9,7 +9,7 @@ from mycodemo.app import flow
 st.set_page_config(page_title="Recipe and first prediction", page_icon="🧪", layout="wide")
 flow.init()
 ss = st.session_state
-flow.need("environment", "Environment", "pages/3_Environment.py")
+flow.need("environment", "Environment", "pages/2_Environment.py")
 
 st.title("Recipe and first prediction")
 ss["inoc_date"] = st.date_input("Planned inoculation date", ss["inoc_date"])
@@ -117,4 +117,4 @@ if st.button("Save this plan and open Monitor", type="primary"):
     ss["batch"] = {"batch_label": f"{what} {ss['inoc_date'].isoformat()}", "species": row["latin"] if row else what,
                    "inoc_date": ss["inoc_date"], "n_containers": n, "temp_c": ss["temp_c"],
                    "substrate": "sawdust", "spawn_pct": float(pipeline.SPAWN_PCT)}
-    st.switch_page("pages/6_Monitor.py")
+    st.switch_page("pages/4_Monitor.py")

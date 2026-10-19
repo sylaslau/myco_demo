@@ -308,7 +308,7 @@ def test_old_backup_without_environments_still_restores():
 
 def test_grow_log_page_environment_next_stage_and_backup():
     from streamlit.testing.v1 import AppTest
-    at = AppTest.from_file(str(Path(__file__).parents[1] / "mycodemo/app/pages/6_Monitor.py"), default_timeout=60).run()
+    at = AppTest.from_file(str(Path(__file__).parents[1] / "mycodemo/app/pages/4_Monitor.py"), default_timeout=60).run()
     assert not at.exception
     assert [r.label for r in at.radio if r.label == "What is this batch for?"]      # no plan yet: food/materials box
     assert at.radio(key="b_goal").value == "Food"

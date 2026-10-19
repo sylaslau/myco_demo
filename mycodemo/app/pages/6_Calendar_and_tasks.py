@@ -7,7 +7,7 @@ from mycodemo.app import flow
 st.set_page_config(page_title="Calendar and tasks", page_icon="📅", layout="wide")
 flow.init()
 ss = st.session_state
-flow.need("batch", "Recipe and first prediction", "pages/5_Recipe_and_first_prediction.py")
+flow.need("batch", "Recipe and first prediction", "pages/3_Recipe_and_timeline.py")
 
 st.title("Calendar and tasks")
 result = flow.run()

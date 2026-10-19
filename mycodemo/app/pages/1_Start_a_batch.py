@@ -1,4 +1,4 @@
-"""What to grow: one pick in total, a Food (mushroom) or a Thing (mycomaterial)."""
+"""Start a batch: one pick in total, a Food (mushroom) or a Thing (mycomaterial)."""
 
 import streamlit as st
 
@@ -32,7 +32,7 @@ def is_food(shown):
     return ss["goal"] == "Food" and ss["choice"] == FOODS[shown]
 
 
-st.title("What to grow")
+st.title("Start a batch")
 st.write("Pick one for this batch. If you want to grow more than one type, start a new batch in another go.")
 left, right = st.columns(2)
 
@@ -73,5 +73,5 @@ with right:
 
 if ss["choice"]:
     st.success(f"Chosen: {flow.choice_label()}")
-    st.page_link("pages/4_Environment.py",
+    st.page_link("pages/2_Environment.py",
                  label="Next: your environment", icon="➡️")

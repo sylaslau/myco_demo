@@ -10,11 +10,11 @@ st.set_page_config(page_title="Where does it/ do they live?",
                    page_icon="📦", layout="wide")
 flow.init()
 ss = st.session_state
-flow.need("choice", "What do you want to grow?", "pages/3_What_to_grow.py")
-for key, value in {"env_where": None, "env_size": {}, "env_container": None, "rh_pct": 80.0}.items():
+flow.need("choice", "What do you want to grow?", "pages/1_Start_a_batch.py")
+for key, value in {"env_where": None, "env_size": {}, "env_amount": {}, "env_container": None, "rh_pct": 80.0}.items():
     ss.setdefault(key, value)
 
-# Where -> (label the pipeline plans the recipe scale from, slider label, min, max, default, step)
+# Where -> (label the pipeline plans the recipe scale from, size label, min, max, default, step)
 WHERE = {
     "Plastic container": ("Small plastic container (about 1 L)", "Size (litres)", 0.5, 5.0, 1.0, 0.5),
     "Shelf or vitrine": ("Shelf or grow tent", "Size (number of shelves)", 1, 8, 3, 1),
@@ -28,9 +28,15 @@ CONTAINERS = {
 }
 
 
-def sync_room(src, dst):
-    """Keep the room slider and its number box showing the same size."""
-    ss[dst] = ss[src]
+def size_amount(name, size_label, lo, hi, default, step, on):
+    """Size and Amount boxes under an item's button; disabled until the item is chosen, saved when it is."""
+    c1, c2 = st.columns(2)
+    size = c1.number_input(size_label, lo, hi, ss["env_size"].get(name, default), step,
+                           key=f"size_{name}", disabled=not on)
+    amount = c2.number_input("Amount", 1, value=int(ss["env_amount"].get(name, 1)), step=1,
+                             key=f"amount_{name}", disabled=not on)
+    if on:
+        ss["env_size"][name], ss["env_amount"][name] = size, int(amount)
 
 
 st.title("Environment")
@@ -45,21 +51,7 @@ with where_col:
             ss["env_where"], ss["environment"] = name, label
             ss["recipe"] = ss["batch"] = None
             st.rerun()
-        size = ss["env_size"].get(name, default)
-        if name == "Room":
-            ss.setdefault("room_sl", size)
-            ss.setdefault("room_num", size)
-            c1, c2 = st.columns([3, 1])
-            c1.slider(size_label, lo, hi, key="room_sl", disabled=not on,
-                      on_change=sync_room, args=("room_sl", "room_num"))
-            c2.number_input("Exact (m²)", 1, 500, key="room_num", disabled=not on, on_change=sync_room,
-                            args=("room_num", "room_sl"))
-            size = ss["room_num"]
-        else:
-            size = st.slider(size_label, lo, hi, size, step,
-                             key=f"size_{name}", disabled=not on)
-        if on:
-            ss["env_size"][name] = size
+        size_amount(name, size_label, lo, hi, default, step, on)
 
 with cont_col:
     st.subheader("Vessels")
@@ -68,6 +60,7 @@ with cont_col:
         if st.button(name, key=f"cont_{name}", type="primary" if on else "secondary", use_container_width=True):
             ss["env_container"] = name
             st.rerun()
+        size_amount(name, *CONTAINERS[name], on)
 
 if ss["environment"]:
     n, kg = flow.ENVIRONMENTS[ss["environment"]]
@@ -112,7 +105,7 @@ else:
         st.caption(f"Fruiting later wants {ft['min']}–{ft['max']} °C (consensus guide).")
 
 if ss["environment"]:
-    st.page_link("pages/5_Recipe_and_first_prediction.py",
+    st.page_link("pages/3_Recipe_and_timeline.py",
                  label="Next: recipe and preview", icon="➡️")
 else:
     st.caption("Choose where you grow to continue.")
