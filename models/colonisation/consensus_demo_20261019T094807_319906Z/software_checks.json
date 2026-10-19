@@ -1,0 +1,19 @@
+[
+  "post-90 allowance is added once",
+  "range stays ordered",
+  "reference temperature has unit factor",
+  "cooler scenario takes longer",
+  "dry-exposed scenario adds 5-10 day envelope",
+  "low RH is not automatically substrate dryness",
+  "outside domain returns no numeric adjusted forecast",
+  "unknown temperature basis is not silently converted",
+  "remaining days are nonnegative",
+  "recorded induction uses independent harvest clock",
+  "maturation requires induction confirmation",
+  "invalid input rejected: humidity_pct",
+  "invalid input rejected: elapsed_days",
+  "unsupported pair rejected rather than extrapolated",
+  "no contextual rows in training manifest",
+  "source file contents unchanged",
+  "reference contents unchanged after output export"
+]

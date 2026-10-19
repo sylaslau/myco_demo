@@ -1,0 +1,14 @@
+{
+  "curve_midpoint_fraction": 0.6,
+  "photo_uncertainty_pct": 10.0,
+  "t90_log_prior_scale": 0.45,
+  "slope_log_prior_scale": 0.5,
+  "scenario_loss_tolerance": 2.0,
+  "duration_scale_min": 0.2,
+  "duration_scale_max": 5.0,
+  "stale_photo_days": 3.0,
+  "stall_span_days": 3.0,
+  "stall_progress_fraction": 0.03,
+  "large_decline_fraction": 0.15,
+  "poor_fit_rmse_fraction": 0.15
+}

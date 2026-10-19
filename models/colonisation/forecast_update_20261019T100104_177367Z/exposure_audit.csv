@@ -1,0 +1,2 @@
+start_day,end_day,origin,available,temperature_duration_factor,humidity_delay_centre_days,notes
+0.0,0.0,2.2 assumed starting conditions,True,1.0,0.0,RH missing; no humidity penalty inferred.

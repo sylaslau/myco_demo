@@ -1,0 +1,40 @@
+{
+  "schema_version": 1,
+  "producer": "2.2.colonisation_time_estimate",
+  "species": "Pleurotus ostreatus",
+  "substrate": "straw",
+  "target": "visible_coverage_90_percent_plus_2_days",
+  "post_90_days": 2.0,
+  "elapsed_days": 0.0,
+  "reference_t90_min_typ_max": [
+    11.195944244680947,
+    14.147615979996324,
+    20.015327338047644
+  ],
+  "adjusted_t90_min_typ_max": [
+    11.195944244680947,
+    14.147615979996324,
+    20.015327338047644
+  ],
+  "harvest_stage_min_typ_max": [
+    5.782208061406003,
+    7.709610748541337,
+    9.637013435676671
+  ],
+  "needs_maturation_review": false,
+  "induction_day": null,
+  "conditions": {
+    "temperature_c": 20.0,
+    "temperature_basis": "air",
+    "humidity_pct": null,
+    "drying_exposed": true
+  },
+  "coverage_observations": [],
+  "condition_history": [],
+  "assumptions": [
+    "air optimum (18.0, 20.0); review optimum band; no air/core conversion.",
+    "Ambient RH not supplied; no humidity adjustment.",
+    "Harvest assumes induction starts at the planning marker and suitable fruiting conditions follow."
+  ],
+  "reference_id": "cb01"
+}

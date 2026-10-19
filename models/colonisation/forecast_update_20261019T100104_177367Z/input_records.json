@@ -1,0 +1,33 @@
+{
+  "batch": {
+    "batch_id": "my-batch",
+    "species": null,
+    "substrate": null,
+    "inoculation_date": null,
+    "current_day": 0.0,
+    "induction_day": null,
+    "induction_confirmed": false,
+    "confirmed_t90_day": null
+  },
+  "coverage_records": [],
+  "condition_records": [],
+  "normalized_conditions": [
+    {
+      "day": 0.0,
+      "conditions": {
+        "temperature_c": 20.0,
+        "temperature_basis": "air",
+        "humidity_pct": null,
+        "drying_exposed": true
+      },
+      "origin": "2.2 assumed starting conditions"
+    }
+  ],
+  "future_conditions": {
+    "temperature_c": 20.0,
+    "temperature_basis": "air",
+    "humidity_pct": null,
+    "drying_exposed": true
+  },
+  "other_batch_records_excluded": 0
+}

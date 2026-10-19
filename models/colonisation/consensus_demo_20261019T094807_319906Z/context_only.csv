@@ -1,0 +1,28 @@
+dataset_id,sample_id,species,substrate,temperature_c,humidity_pct,spawn_pct_as_recorded,endpoint_day,last_observed_day,completed,endpoint_definition,role
+d002,d002-G-R1,Pleurotus ostreatus,straw + soy hull,24.0,,4.8,23.0,28.0,True,score 5 (95-100%),context only; excluded from regression and metrics
+d002,d002-G-R2,Pleurotus ostreatus,cotton + soy hull,24.0,,4.8,19.0,28.0,True,score 5 (95-100%),context only; excluded from regression and metrics
+d002,d002-G-R3,Pleurotus ostreatus,straw + inedible plant biomass,24.0,,4.8,,28.0,False,score 5 (95-100%),context only; excluded from regression and metrics
+d002,d002-G-R4,Pleurotus ostreatus,cotton + inedible plant biomass,24.0,,4.8,,28.0,False,score 5 (95-100%),context only; excluded from regression and metrics
+d002,d002-G-R5,Pleurotus ostreatus,cotton + inedible plant biomass,24.0,,4.8,,28.0,False,score 5 (95-100%),context only; excluded from regression and metrics
+d002,d002-G-R6,Pleurotus ostreatus,cotton,24.0,,4.8,,28.0,False,score 5 (95-100%),context only; excluded from regression and metrics
+d002,d002-G-R7,Pleurotus ostreatus,cotton + inedible plant biomass + food packaging plastic,24.0,,4.8,,28.0,False,score 5 (95-100%),context only; excluded from regression and metrics
+d025,d025-G-T1,Pleurotus ostreatus,tef straw,25.0,85.0,6.5,16.0,16.0,True,reported 100% completion mean,context only; excluded from regression and metrics
+d025,d025-G-T2,Pleurotus ostreatus,barley straw,25.0,85.0,6.5,16.0,16.0,True,reported 100% completion mean,context only; excluded from regression and metrics
+d025,d025-G-T3,Pleurotus ostreatus,wheat straw,25.0,85.0,6.5,15.33,15.33,True,reported 100% completion mean,context only; excluded from regression and metrics
+d025,d025-G-T4,Pleurotus ostreatus,faba bean husk,25.0,85.0,6.5,14.33,14.33,True,reported 100% completion mean,context only; excluded from regression and metrics
+d025,d025-G-T5,Pleurotus ostreatus,field pea husk,25.0,85.0,6.5,15.33,15.33,True,reported 100% completion mean,context only; excluded from regression and metrics
+d025,d025-G-T6,Pleurotus ostreatus,sawdust,25.0,85.0,6.5,18.0,18.0,True,reported 100% completion mean,context only; excluded from regression and metrics
+d025,d025-G-T7,Pleurotus ostreatus,"mixed residues (Trt1-Trt6, 1:1)",25.0,85.0,6.5,13.0,13.0,True,reported 100% completion mean,context only; excluded from regression and metrics
+d026,d026-G-CG,Pleurotus ostreatus,spent coffee grounds,22.0,70.0,0.9,32.7,32.7,True,reported 100% completion mean,context only; excluded from regression and metrics
+d026,d026-G-HB,Pleurotus ostreatus,hazelnut branch,22.0,70.0,0.9,19.8,19.8,True,reported 100% completion mean,context only; excluded from regression and metrics
+d026,d026-G-HBCG,Pleurotus ostreatus,hazelnut branch + spent coffee grounds,22.0,70.0,0.9,15.7,15.7,True,reported 100% completion mean,context only; excluded from regression and metrics
+d026,d026-G-HBHH,Pleurotus ostreatus,hazelnut branch + hazelnut husk,22.0,70.0,0.9,32.7,32.7,True,reported 100% completion mean,context only; excluded from regression and metrics
+d026,d026-G-HBRH,Pleurotus ostreatus,hazelnut branch + rice husk,22.0,70.0,0.9,17.0,17.0,True,reported 100% completion mean,context only; excluded from regression and metrics
+d026,d026-G-HBWS,Pleurotus ostreatus,hazelnut branch + wheat straw,22.0,70.0,0.9,17.3,17.3,True,reported 100% completion mean,context only; excluded from regression and metrics
+d026,d026-G-HH,Pleurotus ostreatus,hazelnut husk,22.0,70.0,0.9,27.0,27.0,True,reported 100% completion mean,context only; excluded from regression and metrics
+d026,d026-G-HHCG,Pleurotus ostreatus,hazelnut husk + spent coffee grounds,22.0,70.0,0.9,45.0,45.0,True,reported 100% completion mean,context only; excluded from regression and metrics
+d026,d026-G-RH,Pleurotus ostreatus,rice husk,22.0,70.0,0.9,26.7,26.7,True,reported 100% completion mean,context only; excluded from regression and metrics
+d026,d026-G-RHCG,Pleurotus ostreatus,rice husk + spent coffee grounds,22.0,70.0,0.9,15.0,15.0,True,reported 100% completion mean,context only; excluded from regression and metrics
+d026,d026-G-WS,Pleurotus ostreatus,wheat straw,22.0,70.0,0.9,20.0,20.0,True,reported 100% completion mean,context only; excluded from regression and metrics
+d026,d026-G-WSCG,Pleurotus ostreatus,wheat straw + spent coffee grounds,22.0,70.0,0.9,37.0,37.0,True,reported 100% completion mean,context only; excluded from regression and metrics
+d026,d026-G-WSHH,Pleurotus ostreatus,wheat straw + hazelnut husk,22.0,70.0,0.9,25.0,25.0,True,reported 100% completion mean,context only; excluded from regression and metrics

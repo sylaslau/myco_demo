@@ -1,0 +1,83 @@
+{
+  "species": "Pleurotus ostreatus",
+  "substrate": "straw",
+  "ref_id": "cb01",
+  "source_colonisation_days_min_typ_max": [
+    12.0,
+    14.0,
+    21.0
+  ],
+  "source_first_harvest_stage_typical_days": 8.0,
+  "consensus_regression_t90_min_typ_max": [
+    11.195944244680947,
+    14.147615979996324,
+    20.015327338047644
+  ],
+  "adjusted_t90_min_typ_max": [
+    11.195944244680947,
+    14.147615979996324,
+    20.015327338047644
+  ],
+  "planning_90_plus_2_day_min_typ_max": [
+    13.195944244680947,
+    16.147615979996324,
+    22.015327338047644
+  ],
+  "planning_90_plus_2_days_remaining": [
+    13.195944244680947,
+    16.147615979996324,
+    22.015327338047644
+  ],
+  "harvest_day_min_typ_max": [
+    18.978152306086947,
+    23.85722672853766,
+    31.652340773724315
+  ],
+  "harvest_days_remaining": [
+    18.978152306086947,
+    23.85722672853766,
+    31.652340773724315
+  ],
+  "harvest_stage_min_typ_max": [
+    5.782208061406003,
+    7.709610748541337,
+    9.637013435676671
+  ],
+  "harvest_range_basis": "assumed +/-25% stage envelope; not sourced bounds",
+  "elapsed_days": 0.0,
+  "conditions": {
+    "temperature_c": 20.0,
+    "temperature_basis": "air",
+    "humidity_pct": null,
+    "drying_exposed": true
+  },
+  "environment_rules": {
+    "available": true,
+    "temperature_duration_factor": 1.0,
+    "humidity_delay_days": [
+      0.0,
+      0.0,
+      0.0
+    ],
+    "optimum_band": [
+      18.0,
+      20.0
+    ],
+    "notes": [
+      "air optimum (18.0, 20.0); review optimum band; no air/core conversion.",
+      "Ambient RH not supplied; no humidity adjustment."
+    ]
+  },
+  "needs_maturation_review": false,
+  "induction_actions": "Open or cut slits in cultivation bag, lower ambient temperature to 10-16 C, increase fresh air exchange, and introduce indirect light to initiate pinning.",
+  "colonisation_cautions": "Keep ambient room air cooler (18-20 C) than internal core substrate temperature to prevent metabolic heat buildup above 35 C.",
+  "source_reference": "Penn State Extension (Royse, 2003); Ten Speed Press (Stamets, 2000), pp. 308-315; ICAR-DMR Solan (2020), p. 24",
+  "source_confidence_as_recorded": "High",
+  "endpoint_basis": "typical consensus duration treated as 90%; +2 days once; range envelope assumed",
+  "model_basis": "consensus regression plus provisional environmental rules; not experimentally validated",
+  "notes": [
+    "air optimum (18.0, 20.0); review optimum band; no air/core conversion.",
+    "Ambient RH not supplied; no humidity adjustment.",
+    "Harvest assumes induction starts at the planning marker and suitable fruiting conditions follow."
+  ]
+}

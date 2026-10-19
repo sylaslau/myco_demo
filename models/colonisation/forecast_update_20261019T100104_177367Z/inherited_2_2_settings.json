@@ -1,0 +1,80 @@
+{
+  "ridge_alpha": 0.1,
+  "post_90_days": 2.0,
+  "temperature_rate_loss_per_degree_assumed": 0.05,
+  "temperature_min_relative_rate_assumed": 0.25,
+  "temperature_max_distance_degrees_assumed": 10.0,
+  "low_RH_threshold_assumed": 60.0,
+  "low_RH_drying_exposure_delay_scenario": [
+    5.0,
+    10.0
+  ],
+  "harvest_relative_spread_assumed": 0.25,
+  "review_temperature_optima": {
+    "Pleurotus ostreatus": {
+      "substrate_core": [
+        23.0,
+        25.0
+      ],
+      "air": [
+        18.0,
+        20.0
+      ]
+    },
+    "Pleurotus pulmonarius": {
+      "substrate_core": [
+        24.0,
+        28.0
+      ],
+      "air": [
+        20.0,
+        24.0
+      ]
+    },
+    "Pleurotus eryngii": {
+      "substrate_core": [
+        24.0,
+        24.0
+      ],
+      "air": [
+        18.0,
+        22.0
+      ]
+    },
+    "Lentinula edodes": {
+      "substrate_core": [
+        23.0,
+        25.0
+      ],
+      "air": [
+        18.0,
+        22.0
+      ]
+    },
+    "Ganoderma lucidum": {
+      "substrate_core": [
+        27.0,
+        30.0
+      ],
+      "air": [
+        24.0,
+        26.0
+      ]
+    }
+  },
+  "training_basis": "22 consensus rows only; no experimental outcomes",
+  "python_version": "3.13.14",
+  "numpy_version": "2.5.3",
+  "pandas_version": "3.0.6",
+  "user_input": {
+    "species": "Pleurotus ostreatus",
+    "substrate": "straw",
+    "temperature_c": 20.0,
+    "temperature_basis": "air",
+    "humidity_pct": null,
+    "drying_exposed": true,
+    "elapsed_days": 0.0,
+    "induction_day": null,
+    "induction_confirmed": false
+  }
+}

@@ -1,0 +1,58 @@
+{
+  "batch_id": "my-batch",
+  "species": "Pleurotus ostreatus",
+  "substrate": "straw",
+  "status": "baseline_only",
+  "t90_day_min_typ_max": [
+    11.195944244680947,
+    14.147615979996324,
+    20.015327338047644
+  ],
+  "crossing_basis": "conditions-only consensus baseline",
+  "conditions_only_t90_day_min_typ_max": [
+    11.195944244680947,
+    14.147615979996324,
+    20.015327338047644
+  ],
+  "planning_90_plus_2_day_min_typ_max": [
+    13.195944244680947,
+    16.147615979996324,
+    22.015327338047644
+  ],
+  "planning_days_remaining": [
+    13.195944244680947,
+    16.147615979996324,
+    22.015327338047644
+  ],
+  "first_harvest_day_min_typ_max": [
+    18.978152306086947,
+    23.85722672853766,
+    31.652340773724315
+  ],
+  "first_harvest_days_remaining": [
+    18.978152306086947,
+    23.85722672853766,
+    31.652340773724315
+  ],
+  "current_day": 0.0,
+  "accepted_coverage_count": 0,
+  "curve_fit": {
+    "status": "baseline_only",
+    "scale_scenarios": [
+      1.0,
+      1.0,
+      1.0
+    ],
+    "t90_effective": 14.147615979996324,
+    "slope": 0.3882676382443041,
+    "rmse": null,
+    "notes": [],
+    "profile": null
+  },
+  "notes": [
+    "conditions-only consensus baseline",
+    "Unrecorded initial exposure uses exported 2.2 conditions as an assumption.",
+    "Future exposure uses selected future conditions held constant; no future observations were used.",
+    "Harvest assumes induction at the planning marker, followed by suitable fruiting conditions."
+  ]
+}

@@ -1,0 +1,23 @@
+ref_id,status,absolute_error_days
+cb01,reference reconstruction only,0.283946191775863
+cb02,reference reconstruction only,2.76306726732631
+cb03,reference reconstruction only,2.7893375396103615
+cb04,reference reconstruction only,0.6626338810850072
+cb05,reference reconstruction only,0.9882125897260057
+cb06,reference reconstruction only,1.22269346952271
+cb07,reference reconstruction only,2.5586177616036956
+cb08,unrepresented category: substrate_code,
+cb09,reference reconstruction only,2.590774304409514
+cb10,reference reconstruction only,2.006966174094778
+cb11,reference reconstruction only,0.8627379741583816
+cb12,reference reconstruction only,2.6439162898434514
+cb13,unrepresented category: species_regime,
+cb14,unrepresented category: species_regime,
+cb15,reference reconstruction only,5.079757517099594
+cb16,unrepresented category: substrate_code,
+cb17,reference reconstruction only,5.142649432104108
+cb18,reference reconstruction only,2.7548389142752896
+cb19,reference reconstruction only,1.8279830887954844
+cb20,unrepresented category: species_regime,
+cb21,reference reconstruction only,0.8317621991105888
+cb22,unrepresented category: substrate_code,

@@ -1,0 +1,6 @@
+{
+  "training_reference_rows": 22,
+  "reference_reproduction_mae_days": 1.7152124272171292,
+  "reference_reproduction_max_error_days": 18.66573039405793,
+  "experimental_validation_performed": false
+}
