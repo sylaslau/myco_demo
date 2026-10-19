@@ -5,11 +5,14 @@ required value is dropped (the notebook raises on blanks). Skipped curves are re
 masters_mix is left out of the project (Sylas 10-19).
 """
 
+from datetime import date
 from pathlib import Path
 
 import numpy as np
 import pandas as pd
 
+from mycodemo import pipeline
+from mycodemo.cultivation import FRUITING_CONDITIONS, baseline_guide
 from mycodemo.growth import consensus_estimate
 from mycodemo.growth.forecast_update import DEFAULT_UPDATE_RULES, LOG9, logistic_coverage
 
@@ -20,12 +23,19 @@ SCHEMAS = {
     "heldout_predictions": "dataset split model observation_id days observed_pct predicted_pct",
     "stages": "dataset experiment temperature_c species stage start_day end_day",
     "events": "dataset experiment temperature_c species event day",
+    "app_timeline": "species common_name temperature_c item kind start_day end_day in_range source",
 }
 ESTIMATE = "Colonisation time estimate"
 FORECAST = "Colonisation forecast"
 LITERATURE = "literature consensus"
 GROUPS = {"straw", "cotton", "sawdust", "bagasse", "corncob", "logs"}   # the 2.2 groups, masters_mix excluded
 OMITTED = {"masters_mix"}
+# Sylas 10-19 named P. djamor as tropical; every other Pleurotus in the data is treated as cool. Not inferred from a
+# climate rule: extend this set only when the user says so.
+TROPICAL_SPECIES = {"Pleurotus djamor"}
+SLIDER_C = range(18, 31)              # colonisation figures: 1 °C steps, about the range the 2.2 model covers
+TIMELINE_C = range(15, 33)            # app timeline: 1 °C steps
+TIMELINE_SUBSTRATE = "sawdust"        # the app's default substrate (baseline_guide.FALLBACK_SUBSTRATE)
 SENSOR_FILE_GLOB = "data/raw/syldd_2026/sensors/*.csv"
 
 
@@ -42,8 +52,17 @@ def substrate_group(name):
     return "straw" if name.endswith("straw") else None
 
 
-def _dataset_label(dataset, group):
-    return f"{dataset} · {group}" if group else dataset
+def oyster_group(species):
+    species = str(species)
+    if not species.startswith("Pleurotus"):
+        return "not_oyster"
+    return "tropical" if species in TROPICAL_SPECIES else "cool"
+
+
+def _dataset_label(dataset, substrate):
+    """Dataset ID plus the substrate name from the sample/substrate tables; just the ID when there is none."""
+    substrate = "" if pd.isna(substrate) else str(substrate).strip()
+    return f"{dataset} · {substrate}" if substrate else dataset
 
 
 def _clean(frame, name):
@@ -70,10 +89,10 @@ def build_observations(root):
     g = m.merge(s, on="sample_id", how="left").merge(f, on="fermentation_id", how="left").merge(sub, on="substrate_id", how="left")
     g["species"] = g.genus + " " + g.species
     g["group"] = g.plant_name.map(substrate_group)
-    g["oyster_group"] = np.where(g.species.eq("Pleurotus ostreatus"), "cool", "not_oyster")
+    g["oyster_group"] = g.species.map(oyster_group)
     rows = pd.DataFrame({
         "dataset": [_dataset_label(d, x) if sp.startswith("Pleurotus") else d
-                    for d, x, sp in zip(g.dataset_id, g.group, g.species.fillna(""))],
+                    for d, x, sp in zip(g.dataset_id, g.plant_name, g.species.fillna(""))],
         "experiment": g.sample_id, "observation_id": g.sample_id + "-day" + g.day_of_growth.astype(str),
         "genus": g.genus, "species": g.species, "oyster_group": g.oyster_group, "temperature_c": g.incubation_temp_c,
         "days": g.day_of_growth, "colonisation_pct": g.surface_colonised_pct, "group": g.group})
@@ -86,45 +105,81 @@ def build_observations(root):
     return pd.concat([rows, syldd], ignore_index=True)
 
 
-def build_baseline_curves(root, observations):
-    """One logistic curve per Pleurotus species x substrate group x observed temperature (same call as the app).
-    Returns (curves, skipped) where skipped lists (dataset, species, substrate, temperature, reason)."""
-    cm = consensus_estimate.load_bundle(consensus_estimate.find_bundle(Path(root) / "models/colonisation"))
+def build_baseline_curves(root, bundle=None):
+    """2.2 baseline curve for every Pleurotus species in the bundle at every slider temperature (same call as the app,
+    air temperature, logistic rule: 90 % at t90, midpoint 0.60 x t90). The substrate is the species' main group: the
+    first one listed for it in reference_reproduction.csv. Returns (curves, skipped); skipped lists
+    (species, substrate, temperature, reason)."""
+    bundle = bundle or consensus_estimate.find_bundle(Path(root) / "models/colonisation")
+    cm = consensus_estimate.load_bundle(bundle)
     midpoint = DEFAULT_UPDATE_RULES["curve_midpoint_fraction"]
-    sub = pd.read_csv(Path(root) / "data/interim/extracted/substrate.csv")[["substrate_id", "plant_name"]]
-    ex = Path(root) / "data/interim/extracted"
-    sample = pd.read_csv(ex / "sample.csv")[["sample_id", "substrate_id"]].merge(sub, on="substrate_id", how="left")
-    names = dict(zip(sample.sample_id, sample.plant_name))
-    obs = observations[observations.genus.eq("Pleurotus") & observations.dataset.ne("syldd")]
+    ref = pd.read_csv(bundle / "reference_reproduction.csv")
     frames, skipped = [], []
-    for (dataset, species, group, temp), g in obs.groupby(
-            [obs.dataset.str.split(" · ").str[0], "species", obs.group.fillna(""), "temperature_c"]):
-        if not group:
-            for exp in sorted(set(g.experiment)):
-                skipped.append((dataset, species, names.get(exp, "substrate not recorded"), temp, "no clear 2.2 substrate group"))
+    for species, g in ref[ref.species.str.startswith("Pleurotus")].groupby("species", sort=False):
+        group = g.substrate_code.iloc[0]
+        if group not in GROUPS:
+            skipped.append((species, group, None, "no 2.2 substrate group"))
             continue
-        try:
-            r = cm.estimate_days(species, group, temperature_c=temp, temperature_basis="air")
-        except ValueError as exc:
-            skipped.append((dataset, species, group, temp, str(exc)))
-            continue
-        adjusted = r["adjusted_t90_min_typ_max"]
-        if adjusted is None:
-            skipped.append((dataset, species, group, temp, "no numeric adjusted estimate at this temperature"))
-            continue
-        t90 = adjusted[1]
-        slope = LOG9 / ((1 - midpoint) * t90)
-        days = np.round(np.arange(0, np.ceil(2 * t90 * 1.5) / 2 + 0.5, 0.5), 2)
-        frames.append(pd.DataFrame({
-            "dataset": _dataset_label(dataset, group), "genus": "Pleurotus", "species": species, "oyster_group": "cool",
-            "temperature_c": temp, "days": days, "predicted_pct": 100 * logistic_coverage(days, t90, slope), "model": ESTIMATE}))
-    # syldd: substrates of the containers are not recorded in the repo's substrate table, so no curve is drawn
-    if (observations.dataset == "syldd").any():
-        skipped.append(("syldd", "Pleurotus ostreatus", "container substrates not in the repo's substrate table",
-                        round(float(observations.loc[observations.dataset == "syldd", "temperature_c"].iloc[0]), 2),
-                        "no clear 2.2 substrate group"))
+        for temp in SLIDER_C:
+            try:
+                adjusted = cm.estimate_days(species, group, temperature_c=float(temp), temperature_basis="air")["adjusted_t90_min_typ_max"]
+            except ValueError as exc:
+                skipped.append((species, group, temp, str(exc)))
+                continue
+            if adjusted is None:
+                skipped.append((species, group, temp, "no numeric adjusted estimate at this temperature"))
+                continue
+            t90 = adjusted[1]
+            slope = LOG9 / ((1 - midpoint) * t90)
+            days = np.round(np.arange(0, np.ceil(2 * t90 * 1.5) / 2 + 0.5, 0.5), 2)
+            frames.append(pd.DataFrame({
+                "dataset": "2.2 baseline · " + group, "genus": "Pleurotus", "species": species,
+                "oyster_group": oyster_group(species), "temperature_c": float(temp), "days": days,
+                "predicted_pct": 100 * logistic_coverage(days, t90, slope), "model": ESTIMATE}))
     curves = pd.concat(frames, ignore_index=True) if frames else pd.DataFrame(columns=SCHEMAS["baseline_curves"].split())
     return curves, skipped
+
+
+def build_app_timeline(root=None):
+    """What the app shows a user, per species x temperature, by calling the app's own code (pipeline.colonisation_estimate,
+    colonisation_forecast with no photos, dates_step, fruiting_estimate) on a Food batch with the sawdust recipe.
+    Days are since inoculation; an event holds the app's range (start_day-end_day) and is drawn at its middle.
+    Species the app cannot show (no matching FRUITING_CONDITIONS entry) are returned in skipped."""
+    base = baseline_guide.load()
+    rows, skipped = [], []
+    for species, g in base.groupby("species", sort=False):
+        common = g.common_name.iloc[0]
+        entries = [s for s in FRUITING_CONDITIONS if s["latin"] == species]
+        entry = next((s for s in entries if s["name"] == common), entries[0] if entries else None)
+        if entry is None:
+            skipped.append((species, common, "not in the app's species list (FRUITING_CONDITIONS)"))
+            continue
+        for temp in TIMELINE_C:
+            batch = pipeline.Batch(goal="Food", choice=entry["name"], recipe={"preset": "suppsaw"},
+                                   temp_c=float(temp), inoc_date=date.today())
+            row, row_note = pipeline.baseline_row(batch)
+            est = pipeline.colonisation_estimate(batch, float(temp))
+            fc = pipeline.colonisation_forecast(batch, est)
+            dates = pipeline.dates_step(batch, fc)
+            if est.value is None or not dates.value:
+                skipped.append((species, common, f"no estimate at {temp} °C"))
+                continue
+            inc = baseline_guide.colonisation(row)["incubation_temp_C"]
+            in_range = inc["min"] <= temp <= inc["max"]
+            source = f"{fc.source}; {row_note}"
+            ev = {n: ((a - batch.inoc_date).days, (b - batch.inoc_date).days) for n, a, b in dates.value}
+            common_row = dict(species=species, common_name=common, temperature_c=float(temp), in_range=in_range, source=source)
+            full, marker = ev[pipeline.ENDPOINT_LABEL], ev.get(pipeline.MARKER_LABEL)
+            mid = lambda r: (r[0] + r[1]) / 2
+            events = [("Inoculation", ev["Inoculation"]), ("Fully colonised", full)]
+            stages = [("Colonisation", 0.0, mid(full))]
+            if marker:
+                stages += [("Induction planning marker (2 days)", mid(full), mid(marker)),
+                           ("Fruiting (start induction to first harvest)", mid(marker), mid(ev["First harvest"]))]
+                events += [("Start induction", marker), ("Pinning", ev["Pinning"]), ("First harvest", ev["First harvest"])]
+            rows += [{**common_row, "item": i, "kind": "stage", "start_day": a, "end_day": b} for i, a, b in stages]
+            rows += [{**common_row, "item": i, "kind": "event", "start_day": r[0], "end_day": r[1]} for i, r in events]
+    return pd.DataFrame(rows, columns=SCHEMAS["app_timeline"].split()), skipped
 
 
 def build_model_metrics(root, bundle):
@@ -184,21 +239,23 @@ def build_events(bundle):
 
 
 def build_presentation_data(root):
-    """Write the six CSVs into <root>/presentation_data/. Returns (row counts, skipped curves)."""
+    """Write the seven CSVs into <root>/presentation_data/. Returns (row counts, skipped curves and timeline species)."""
     root = Path(root)
     out = root / "presentation_data"
     out.mkdir(exist_ok=True)
     bundle = consensus_estimate.find_bundle(root / "models/colonisation")
     observations = build_observations(root)
-    curves, skipped = build_baseline_curves(root, observations)
+    curves, skipped = build_baseline_curves(root, bundle)
+    timeline, skipped_timeline = build_app_timeline()
     tables = {
         "observations": _clean(observations, "observations"),
         "baseline_curves": _clean(curves, "baseline_curves"),
         "model_metrics": _clean(build_model_metrics(root, bundle), "model_metrics"),
         "stages": _clean(build_stages(root, bundle), "stages"),
         "events": _clean(build_events(bundle), "events"),
+        "app_timeline": _clean(timeline, "app_timeline"),
         "heldout_predictions": pd.DataFrame(columns=SCHEMAS["heldout_predictions"].split()),
     }
     for name, frame in tables.items():
         frame.to_csv(out / f"{name}.csv", index=False)
-    return {name: len(frame) for name, frame in tables.items()}, skipped
+    return {name: len(frame) for name, frame in tables.items()}, skipped + skipped_timeline
