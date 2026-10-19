@@ -87,7 +87,7 @@ for col, name, plan in [(col1, "Original", orig), (col2, "Corrected", corr), (co
                     st.warning(w)
             else:
                 st.success("No warnings for these inputs.")
-            st.caption("Colonisation forecast: coming with the Grow Log & Photos page.")
+            st.caption("Colonisation forecast: coming with the Monitor page.")
 
 st.subheader("All numbers")
 st.dataframe(table.style.format("{:.2f}"))

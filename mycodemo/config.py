@@ -18,6 +18,9 @@ EXTERNAL_DATA_DIR = DATA_DIR / "external"
 
 MODELS_DIR = PROJ_ROOT / "models"
 
+# Training history (CSV + PNG per run) of every model, Kaggle or local; outside the repo
+HISTORY_DIR = Path.home() / "Desktop/MycoMaterials/kaggle/history"
+
 REPORTS_DIR = PROJ_ROOT / "reports"
 FIGURES_DIR = REPORTS_DIR / "figures"
 

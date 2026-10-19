@@ -1,4 +1,4 @@
-"""Shroomify app: welcome page (the entry file).
+"""Shroomie app: welcome page (the entry file).
 
 Run from the project folder (with the .venv active):
     streamlit run mycodemo/app/Welcome.py
@@ -8,7 +8,7 @@ import streamlit as st
 
 from mycodemo.app import flow
 
-st.set_page_config(page_title="Shroomify", page_icon="🍄", layout="wide")
+st.set_page_config(page_title="Shroomie", page_icon="🍄", layout="wide")
 flow.init()
 
 FLOW_CSS = """
@@ -27,17 +27,18 @@ def stage_flow(title, stages):
     for i, (name, active) in enumerate(stages):
         if i:
             parts.append('<div class="sf-arrow">↓</div>')
-        parts.append(f'<div class="sf-box{"" if active else " off"}">{name}</div>')
+        parts.append(
+            f'<div class="sf-box{"" if active else " off"}">{name}</div>')
     return "".join(parts)
 
 
-st.title("Shroomify")
+st.title("Shroomie")
 st.markdown(
-    "<div style='font-size:1.05rem'>Hi! I'm Shroomify, your mycelium cultivation buddy. I sit by your side to:"
+    "<div style='font-size:1.05rem'>Your mycelium cultivation buddy 🍄 I sit by your side to:"
     "<ul>"
     "<li>🍄 help you pick what to grow</li>"
     "<li>🧪 hand you a starter recipe</li>"
-    "<li>📷 keep an eye on your photos</li>"
+    "<li>📷 watch out for your mycelium and help you tend to their needs </li>"
     "<li>⏰ tell you when the next stage is coming</li>"
     "</ul></div>",
     unsafe_allow_html=True,
@@ -51,9 +52,4 @@ thing.markdown(stage_flow("Thing", [("Culture", False), ("Spawn", False), ("Pret
                                     ("Block", True), ("Posttreatment", False)]), unsafe_allow_html=True)
 
 st.write("")
-st.caption("Built on the open-source mycro-grow maths (MIT licence, the tools of [usemycro.com](https://usemycro.com)) "
-           "plus our own data. Greyed boxes marked PREVIEW show features that are planned but not active yet.")
-st.info(
-    "Yield is an estimate from an assumed biological efficiency (BE), "
-    "not a prediction: no dataset yet links growth to harvest weight."
-)
+st.caption("")

@@ -192,6 +192,10 @@ def backup_from_json(text):
         if isinstance(e, ValueError) and str(e).startswith("Backup has a bad date"):
             raise
         raise ValueError(f"Backup does not have the expected structure ({type(e).__name__}: {e}).") from None
+    if doc.get("pipeline"):                  # optional: the batch record (older backups have none)
+        p["pipeline"] = doc["pipeline"]
+    if doc.get("environments"):              # optional: name -> environment (older backups have none)
+        p["environments"] = doc["environments"]
     p["replace"] = True
     return p
 

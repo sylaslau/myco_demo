@@ -134,23 +134,33 @@ def save_run(df: pd.DataFrame, out_dir, run_id: str, settings: dict | None = Non
     return out
 
 
-# --- History CSV: one file per run, the same layout the Kaggle notebooks write ----------------
-HISTORY_FRONT = ["model", "run", "train_set", "test_set", "date", "epochs", "imgsz", "batch", "base_model"]
+# --- History CSV: one file per run, the same front columns for every model type ---------------
+# model, run, notebook, train_set, test_set, date, settings (JSON text), then ONE step column
+# (epoch | n_trees | train_size) and the scores of that step. One row per step.
+HISTORY_FRONT = ["model", "run", "notebook", "train_set", "test_set", "date", "settings"]
+STEP_COLUMNS = {"epoch": "epoch", "n_trees": "number of trees", "train_size": "training-set size"}
 _LOSSES = ["train/box_loss", "train/seg_loss", "train/cls_loss", "train/dfl_loss"]
 _VAL_LOSSES = ["val/box_loss", "val/seg_loss", "val/cls_loss", "val/dfl_loss"]
 
 
-def history_filename(model: str, run: str, direction: str, date: str) -> str:
-    """<model>_<run>_<direction>_<YYYYMMDD>.csv, e.g. harvest_readiness_run3_trainothers_testangelo_20261014.csv."""
+def notebook_number(notebook: str) -> str:
+    """'3.2.kaggle_harvest_readiness' -> '3.2' (runs are named by the notebook number)."""
+    return ".".join(notebook.split(".")[:2])
+
+
+def history_filename(notebook: str, model: str, run: str, direction: str, date: str) -> str:
+    """<number>_<model>_<run>_<direction>_<YYYYMMDD>.csv, e.g. 3.2_harvest_readiness_run3_trainothers_testangelo_20261014.csv."""
     parts = [re.sub(r"[^\w-]+", "", p) for p in (model, run, direction, date.replace("-", ""))]
-    return "_".join(parts) + ".csv"
+    return "_".join([notebook_number(notebook), *parts]) + ".csv"
 
 
-def with_history_columns(df: pd.DataFrame, *, model, run, train_set, test_set, date, epochs, imgsz, batch,
-                         base_model) -> pd.DataFrame:
-    """Put the run's settings in front of the per-epoch table; ``date`` is ISO (2026-10-12)."""
-    front = dict(model=model, run=run, train_set=train_set, test_set=test_set, date=date,
-                 epochs=epochs, imgsz=imgsz, batch=batch, base_model=base_model)
+def with_history_columns(df: pd.DataFrame, *, model, run, notebook, train_set, test_set, date,
+                         settings: dict | None = None) -> pd.DataFrame:
+    """Put the run's columns in front of the per-step table; ``date`` is ISO (2026-10-12).
+
+    ``settings`` (epochs, image size, score name, ...) is stored as one JSON text column."""
+    front = dict(model=model, run=run, notebook=notebook, train_set=train_set, test_set=test_set,
+                 date=date, settings=json.dumps(settings or {}, sort_keys=True))
     out = df.copy()
     for i, (k, v) in enumerate(front.items()):
         out.insert(i, k, v)
@@ -170,7 +180,7 @@ def save_history_csv(df: pd.DataFrame, out_dir, direction: str, **meta) -> Path:
     """Write one history CSV (settings columns in front) into out_dir; returns its path."""
     out = Path(out_dir)
     out.mkdir(parents=True, exist_ok=True)
-    path = out / history_filename(meta["model"], meta["run"], direction, meta["date"])
+    path = out / history_filename(meta["notebook"], meta["model"], meta["run"], direction, meta["date"])
     with_history_columns(df, **meta).to_csv(path, index=False)
     return path
 
@@ -237,3 +247,67 @@ def plot_fold_scores(scores: pd.DataFrame, out_png, fold="held_out_lab", model="
     ax.figure.savefig(out_png, dpi=130, bbox_inches="tight")
     plt.close(ax.figure)
     return out_png
+
+
+# --- Steps for models without epochs: learning curve and number of trees ----------------------
+def grouped_learning_curve(data: pd.DataFrame, groups: str, fit_score, n_groups=None, repeats=5,
+                           seed=0) -> pd.DataFrame:
+    """Learning curve that never splits a growth: whole groups (growth, sample or lab) move together.
+
+    Each group is held out once as the validation side. The training side is ``k`` random other
+    groups, ``k`` taking every value in ``n_groups`` (default 1 .. all others), ``repeats`` draws each
+    (one draw when all others are used). ``fit_score(train, test)`` fits on ``train`` and returns one
+    number for ``test``; it is called on the training rows (train score) and on the held-out group
+    (validation score). One row per step: ``train_size`` is the mean number of training rows, the
+    scores are medians over the draws and held-out groups (one wild extrapolation does not decide
+    the curve), with the 25th and 75th percentile of the validation score.
+    """
+    rng = np.random.default_rng(seed)
+    ids = list(data[groups].dropna().unique())
+    ks = sorted(set(n_groups or range(1, len(ids))))
+    rows = []
+    for held in ids:
+        others = [g for g in ids if g != held]
+        test = data[data[groups] == held]
+        for k in ks:
+            if k > len(others):
+                continue
+            for _ in range(1 if k == len(others) else repeats):
+                chosen = list(rng.choice(others, k, replace=False)) if k < len(others) else others
+                train = data[data[groups].isin(chosen)]
+                rows.append({"k": k, "train_size": len(train), "train_score": fit_score(train, train),
+                             "val_score": fit_score(train, test)})
+    r = pd.DataFrame(rows)
+    out = r.groupby("k").agg(train_size=("train_size", "mean"), train_score=("train_score", "median"),
+                             val_score=("val_score", "median"), val_score_p25=("val_score", lambda v: v.quantile(0.25)),
+                             val_score_p75=("val_score", lambda v: v.quantile(0.75)),
+                             n_fits=("val_score", "size")).reset_index()
+    out["train_size"] = out["train_size"].round(1)
+    return out.rename(columns={"k": "n_train_groups"})[
+        ["train_size", "train_score", "val_score", "val_score_p25", "val_score_p75", "n_train_groups", "n_fits"]]
+
+
+def tree_count_history(make_model, X, y, groups, counts=(10, 25, 50, 100, 200), score_fn=None,
+                       n_splits=5) -> pd.DataFrame:
+    """Train and validation score against the number of trees (random forest, gradient boosting).
+
+    ``make_model(n_trees)`` returns an unfitted model. Folds are grouped (``groups`` = growth or
+    sample id), so a growth is never on both sides. ``score_fn(y_true, y_pred)`` defaults to R^2.
+    One row per count, scores averaged over the folds.
+    """
+    from sklearn.metrics import r2_score
+    from sklearn.model_selection import GroupKFold
+
+    score_fn = score_fn or r2_score
+    X, y, groups = np.asarray(X), np.asarray(y), np.asarray(groups)
+    splits = list(GroupKFold(n_splits=min(n_splits, len(set(groups)))).split(X, y, groups))
+    rows = []
+    for n in counts:
+        tr_s, va_s = [], []
+        for tr, va in splits:
+            m = make_model(n).fit(X[tr], y[tr])
+            tr_s.append(score_fn(y[tr], m.predict(X[tr])))
+            va_s.append(score_fn(y[va], m.predict(X[va])))
+        rows.append({"n_trees": n, "train_score": np.mean(tr_s), "val_score": np.mean(va_s),
+                     "val_score_sd": np.std(va_s), "n_folds": len(splits)})
+    return pd.DataFrame(rows)
