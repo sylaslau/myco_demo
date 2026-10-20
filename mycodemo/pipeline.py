@@ -128,6 +128,7 @@ class Batch:
     choice: str | None = None         # species name (Food; 'Custom' = own mushroom) or product (Materials)
     custom_name: str = ""
     environment: str | None = None    # recipe scale (page 3), see ENVIRONMENTS; not the Environment record
+    plan_size: tuple | None = None    # (containers, dry kg per container) from the vessels on Environment; beats ENVIRONMENTS
     env_name: str | None = None       # name of the Environment this batch grows in (Grow Log)
     temp_c: float | None = None
     recipe: dict | None = None        # {'preset', 'moisture', 'spawn_pct'}; None = the baseline
@@ -289,6 +290,8 @@ def progress_of(cover):
 
 # --- steps ------------------------------------------------------------------------------------
 def _plan_size(batch):
+    if batch.plan_size:
+        return tuple(batch.plan_size)
     return ENVIRONMENTS.get(batch.environment, (1, 0.5))
 
 
@@ -299,7 +302,7 @@ def recipe_step(batch):
     rec = substrate_recipe(kg, n, preset, moisture)
     spawn_kg = spawn_corrected(rec["per_block"]["hydrated"], spawn_pct, "of_total_mix")["spawn"]
     note = "Baseline recipe, not yet tuned to your product or environment."
-    if batch.environment not in ENVIRONMENTS:
+    if not batch.plan_size and batch.environment not in ENVIRONMENTS:
         note += " No environment chosen yet, so one 0.5 kg container is assumed."
     if batch.goal == "Food" and species_row(batch) is None:
         note += " For your own mushroom the baseline oyster recipe is used; it may not suit it."

@@ -247,7 +247,7 @@ def sync_pipeline(inoc, temp, stage_log, env_name=None):
 code = str(sid).split("-")[1] if is_syldd and str(sid).count("-") >= 2 else None
 pre_substrate, pre_spawn = SYLDD_CODES.get(code, ("wood chips", 10))
 if PLAN and not is_syldd:
-    pre_substrate, pre_spawn = PLAN["substrate"], PLAN["spawn_pct"]
+    pre_substrate, pre_spawn = ss.get("substrate") or PLAN["substrate"], PLAN["spawn_pct"]
 ds = "syldd" if is_syldd else "ref"          # widget keys follow the dataset...
 dk = f"{ds}_{sid}"                           # ...and the dish, so prefills follow the dish
 inoc_default = SYLDD_INOCULATION if is_syldd else date.today()
@@ -294,11 +294,16 @@ with batch_box:
         species = b2.text_input("Species", bf.get("species", "P. ostreatus"), key=f"b_species_{ds}")
         inoc_date = b3.date_input("Inoculation date", bf.get("inoc_date", inoc_default), key=f"b_inoc_{ds}")
         s1, s2, s3 = st.columns(3)
-        substrate = s1.selectbox("Substrate", SUBSTRATES, index=SUBSTRATES.index(start_sub),
-                                 key=f"b_sub_{dk}")
-        if substrate == "other":
-            substrate = s1.text_input("Other substrate", value="" if saved_sub in SUBSTRATES else saved_sub,
-                                      key=f"b_sub_other_{dk}").strip() or "other"
+        if is_syldd:
+            substrate = s1.selectbox("Substrate", SUBSTRATES, index=SUBSTRATES.index(start_sub),
+                                     key=f"b_sub_{dk}")
+            if substrate == "other":
+                substrate = s1.text_input("Other substrate", value="" if saved_sub in SUBSTRATES else saved_sub,
+                                          key=f"b_sub_other_{dk}").strip() or "other"
+        else:                                    # chosen once, at the top of the Recipe page
+            substrate = ss.get("substrate") or saved_sub
+            s1.markdown(f"**Substrate:** {substrate}")
+            s1.caption("Chosen on the Recipe page.")
         particle_mm = s2.number_input("Particle size (mm), typical size, optional", min_value=0.0,
                                       value=bf.get("particle_mm"), step=0.5, key=f"b_part_{ds}")
         spawn_pct = s3.number_input("Spawn %", 0.0, 100.0, float(df_.get("spawn_pct", pre_spawn)), step=1.0,

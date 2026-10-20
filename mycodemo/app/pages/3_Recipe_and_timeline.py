@@ -1,5 +1,8 @@
 """Recipe and timeline: shows what the pipeline returns (recipe, colonisation timeline, yield or strength)."""
 
+import html
+import math
+
 import pandas as pd
 import plotly.graph_objects as go
 import streamlit as st
@@ -13,35 +16,135 @@ flow.init()
 ss = st.session_state
 flow.need("environment", "Environment", "pages/2_Environment.py")
 
+SUBSTRATES = ["wood chips", "sawdust", "straw", "hay", "stem", "other"]
+SUBSTRATE_PRESET = {"wood chips": "suppsaw", "sawdust": "suppsaw", "straw": "straw", "hay": "straw", "stem": "straw",
+                    "other": pipeline.BASELINE}
+VESSELS = ["Tupperware", "Grow bag", "Bucket"]       # the vessel names of the Environment page
+KG_DRY_PER_LITRE = 0.2                               # our assumption: 1 L vessel = 0.2 kg dry substrate (as ENVIRONMENTS)
+HANDLING = 1.05                                      # 5% extra on everything, for handling
+EVENT_COLOR, STAGE_COLOR = "#1f77b4", "#2e8b57"
+
+
+def code(text, n):
+    """First n letters of the words in text, upper case ('Shelf or vitrine' -> 'SHEL')."""
+    letters = "".join(ch for ch in str(text or "") if ch.isalpha())
+    return letters[:n].upper()
+
+
+def suggest_label():
+    """RESIDENCE-SPECIES-VESSEL-YYMMDD for Food, RESIDENCE-PRODUCT-VESSEL-YYMMDD for Materials."""
+    if ss["goal"] == "Materials":
+        what_code = code(ss["choice"], 4)
+    else:
+        latin = (flow.species_row() or {}).get("latin") or ss["custom_name"] or str(ss["choice"] or "")
+        words = latin.split()
+        what_code = (code(words[0], 1) + code(words[1], 2)) if len(words) > 1 else code(latin, 3)
+    return "-".join([code(ss.get("env_where"), 4), what_code, code(ss.get("env_container"), 4),
+                     ss["inoc_date"].strftime("%y%m%d")])
+
+
 st.title("Recipe and timeline")
-ss["inoc_date"] = st.date_input("Planned inoculation date", ss["inoc_date"])
+d1, d2 = st.columns(2)
+ss["inoc_date"] = d1.date_input("Planned inoculation date", ss["inoc_date"])
+auto = suggest_label()
+if ss.get("batch_label") in (None, "", ss.get("batch_label_auto")):   # follow the suggestion until the user edits it
+    ss["batch_label"] = auto
+ss["batch_label_auto"] = auto
+batch_label = d2.text_input("Batch label", key="batch_label", help="Suggested automatically; you can change it.")
+
+ss.setdefault("substrate", "sawdust")
+substrate = d1.selectbox("Substrate", SUBSTRATES, index=SUBSTRATES.index(ss["substrate"])
+                         if ss["substrate"] in SUBSTRATES else SUBSTRATES.index("other"))
+if substrate == "other":
+    substrate = d1.text_input("Other substrate", value="" if ss["substrate"] in SUBSTRATES else ss["substrate"]
+                              ).strip() or "other"
+ss["substrate"] = substrate
+ss["recipe"] = {"preset": SUBSTRATE_PRESET.get(substrate, pipeline.BASELINE), "moisture": pipeline.MOISTURE,
+                "spawn_pct": pipeline.SPAWN_PCT, "substrate": substrate}
+# vessels set on Environment: size x amount, summed (only the vessel chosen there counts; others may be stale)
+vessel = ss.get("env_container")
+ss["plan_size"] = None
+if vessel in VESSELS and vessel in ss.get("env_size", {}):
+    ss["plan_size"] = (int(ss["env_amount"].get(vessel, 1)), ss["env_size"][vessel] * KG_DRY_PER_LITRE)
 result = flow.run()
 batch = flow.get_batch()
 what = flow.choice_label()
-st.caption(f"{what} · {ss['environment']} · {ss['temp_c']:g} °C")
 
 # --- recipe ---------------------------------------------------------------------------------
 st.subheader("Baseline recipe")
 rv = result.recipe.value
 rec, n, spawn_kg = rv["rec"], rv["n"], rv["spawn_kg"]
 pb = rec["per_block"]
-ing = pd.DataFrame([{"Ingredient": i["name"], "Per container (kg)": i["per_block"], "Total (kg)": i["total"]}
+h = HANDLING
+ing = pd.DataFrame([{"Ingredient": i["name"], "Per container (kg)": i["per_block"] * h, "Total (kg)": i["total"] * h}
                     for i in rec["ingredients"]]
-                   + [{"Ingredient": f"Water (to {rv['moisture']} % moisture)", "Per container (kg)": pb["water"],
-                       "Total (kg)": pb["water"] * n},
-                      {"Ingredient": f"Spawn ({rv['spawn_pct']} % of the whole mix)", "Per container (kg)": spawn_kg,
-                       "Total (kg)": spawn_kg * n}])
+                   + [{"Ingredient": f"Water (to {rv['moisture']} % moisture)", "Per container (kg)": pb["water"] * h,
+                       "Total (kg)": pb["water"] * n * h},
+                      {"Ingredient": f"Spawn ({rv['spawn_pct']} % of the whole mix)", "Per container (kg)": spawn_kg * h,
+                       "Total (kg)": spawn_kg * n * h}])
 st.dataframe(ing.style.format({"Per container (kg)": "{:.2f}", "Total (kg)": "{:.2f}"}), hide_index=True)
-st.caption(f"{n} container(s). Amounts are dry matter for the substrate. {result.recipe.note}")
+st.caption("5% extra on everything is included here for handling")
 
-# --- stage timeline (stage 1 block below is the fallback) -------------------------------------
-est, fc, dates, fruit = result.colonisation_estimate, result.colonisation_forecast, result.dates, result.fruiting
+# --- stage timeline (the Stage 1 block below is the fallback) -------------------------------------
+est, fc, dates = result.colonisation_estimate, result.colonisation_forecast, result.dates
+
+
+def logistic(x, t90, c0=0.02, c90=0.90, start=0.0):
+    """Logistic through (start, c0) and (t90, c90); x in days."""
+    def logit(c):
+        return math.log(c / (1 - c))
+    k = (logit(c90) - logit(c0)) / (t90 - start)
+    mid = t90 - logit(c90) / k
+    return [100 / (1 + math.exp(-k * (xi - mid))) for xi in x]
+
+
+def colonisation_chart():
+    """% colonised against days: dotted = estimate (S-curve assumed), solid = measured photos."""
+    if est.is_preview or est.value is None:
+        return
+    photos = sorted((p for p in batch.photos if p.day >= 0 and not p.quality), key=lambda p: p.day)
+    t90 = float(est.value["typical"])
+    if photos and fc.value is not None and fc.value.get("method") in ("curve fit", "consensus update"):
+        t90 = float(fc.value["day90"])                      # Colonisation forecast (3 or more photos)
+    if not t90 > 0:
+        return
+    fig = go.Figure()
+    if not photos:
+        xs = [t90 * i / 60 for i in range(0, 76)]
+        fig.add_trace(go.Scatter(x=xs, y=logistic(xs, t90), mode="lines", line=dict(dash="dot", color=STAGE_COLOR),
+                                 name="Estimate"))
+    else:
+        pd_, pc = [p.day for p in photos], [100 * p.coverage for p in photos]
+        fig.add_trace(go.Scatter(x=[0] + pd_, y=[0] + pc, mode="lines", line=dict(color=STAGE_COLOR),
+                                 name="Measured", hoverinfo="skip"))
+        fig.add_trace(go.Scatter(x=pd_, y=pc, mode="markers", marker=dict(size=9, color=STAGE_COLOR), name="Photos",
+                                 hovertemplate="day %{x}: %{y:.0f}%<extra></extra>"))
+        last_d, last_c = pd_[-1], min(max(pc[-1], 2.0), 98.0)
+        if last_c < 90 and t90 > last_d:
+            xs = [last_d + (t90 * 1.25 - last_d) * i / 60 for i in range(61)]
+            ys = logistic(xs, t90, c0=last_c / 100, start=last_d)
+            fig.add_trace(go.Scatter(x=xs, y=ys, mode="lines", line=dict(dash="dot", color=STAGE_COLOR),
+                                     name="Forecast"))
+    fig.add_hline(y=90, line_dash="dot", line_color="#9aa0a6", annotation_text="90%")
+    fig.add_vline(x=t90, line_dash="dot", line_color="#9aa0a6", annotation_text=f"day {t90:.0f}")
+    fig.update_layout(height=300, margin=dict(l=10, r=10, t=30, b=40), xaxis_title="Days since inoculation",
+                      yaxis_title="% colonised", yaxis=dict(range=[0, 100]), showlegend=False)
+    st.subheader("Colonisation")
+    st.plotly_chart(fig, use_container_width=True)
+    src = "the Colonisation forecast" if t90 != float(est.value["typical"]) else "the Colonisation time estimate"
+    st.caption(f"Dotted: {src} (90% on day {t90:.0f}). The S-curve shape is our assumption. "
+               + ("Solid: measured from your photos in Monitor." if photos else
+                  "Photos added in Monitor are drawn as points with a solid line.")
+               + " If the temperature changes, the estimate is re-run and the dotted part moves.")
+
+
+colonisation_chart()
+
 base = pipeline.baseline_row(batch)
 if base is not None:
     r, row_note = base
     temp = ss["temp_c"]
     species = r["species"]
-    COLONISED_NOTE = flow.FULLY_COLONISED_NOTE
     st.subheader("Stage timeline")
     t = bg.load_text()
     t = t[t["ref_id"] == r["ref_id"]].iloc[0]
@@ -53,69 +156,72 @@ if base is not None:
         + ("" if state == "inside" else " The days below assume the guide's own conditions."))
 
     tl = bg.stages(r).set_index("stage")
+    ind_row, har_row = tl.loc["Start induction"], tl.loc["First harvest"]
+    ind_day, har_day, col_days = ind_row["typical_day"], har_row["typical_day"], col["colonisation_days"]
 
-    # --- horizontal timeline ---------------------------------------------------------------
+    # --- horizontal timeline: events (markers) and stages (bars) ---------------------------------
     fig = go.Figure()
-    full = tl.loc["Fully colonised"]
-    fig.add_trace(go.Bar(y=["Timeline"], x=[full["end_day"] - full["start_day"]], base=[full["start_day"]],
-                         orientation="h", name="Fully colonised (min–max)", marker_color="#2e8b57", opacity=0.45,
-                         width=0.35, hovertemplate=f"Fully colonised: day {full['start_day']}–{full['end_day']}<extra></extra>"))
-    marks = [("Fully colonised", "typical", full["typical_day"], "#2e8b57"),
-             ("Start induction", "", full["typical_day"], "#1f77b4"),
-             ("Pinning", "", tl.loc["Pinning", "typical_day"], "#ff7f0e"),
-             ("First harvest", "", tl.loc["First harvest", "typical_day"], "#d62728")]
-    for label, _, day, color in marks:
-        if label == "Start induction":
-            continue  # same day as Fully colonised; shown in the cards
-        fig.add_trace(go.Scatter(x=[day], y=["Timeline"], mode="markers+text", name=f"{label} (typical)",
-                                 marker=dict(symbol="line-ns", size=36, line=dict(width=3, color=color)),
-                                 text=[f"{label}<br>day {int(day)}"], textposition="top center"))
-    fig.add_vline(x=0, line_dash="dot", annotation_text="Inoculation (day 0)")
+    for name, x0, x1, color in (("Colonising", 0, ind_day, STAGE_COLOR), ("Fruiting", ind_day, har_day, STAGE_COLOR)):
+        fig.add_trace(go.Bar(y=["Timeline"], x=[x1 - x0], base=[x0], orientation="h", name=name, width=0.35,
+                             marker_color=color, opacity=0.45 if name == "Colonising" else 0.7,
+                             text=name, textposition="inside", insidetextanchor="middle",
+                             hovertemplate=f"{name}: day {x0:g}–{x1:g}<extra></extra>"))
+    for name, day in (("Inoculation", 0), ("Induction", ind_day), ("Harvest", har_day)):
+        fig.add_trace(go.Scatter(x=[day], y=["Timeline"], mode="markers+text", name=name,
+                                 marker=dict(symbol="line-ns", size=36, line=dict(width=3, color=EVENT_COLOR)),
+                                 text=[f"{name}<br>day {int(day)}"], textposition="top center"))
     fig.update_layout(height=230, margin=dict(l=10, r=10, t=30, b=40), xaxis_title="Days since inoculation",
                       showlegend=False, barmode="overlay")
     st.plotly_chart(fig, use_container_width=True)
-    st.caption("Green band: Fully colonised, minimum to maximum days; ticks: typical day. Start induction falls on the "
-               "Fully colonised day. Pinning and First harvest are the typical days counted from the start of induction.")
+    st.caption("Bars: stages. Ticks: events, on the typical day. Induction falls on the typical day colonisation ends; "
+               "Harvest is the typical first-harvest day counted from the start of induction.")
 
+    # --- cards: events (blue border) and stages (green border) -----------------------------------
+    NIG = "not in guide"
 
-    def days(label):
-        s = tl.loc[label]
-        return f"day {s['start_day']}–{s['end_day']} (typical {s['typical_day']})"
+    def val(x, unit=""):
+        return NIG if str(x) in ("", "nan", "None") else f"{x}{unit}"
 
+    def rng(lo, hi, unit):
+        return NIG if str(lo) == "nan" or str(hi) == "nan" else (f"{lo:g}–{hi:g}{unit}" if lo != hi else f"{lo:g}{unit}")
 
-    # --- cards -----------------------------------------------------------------------------
-    inferred = fr["induction_evidence_status"] == "inferred_from_existing_columns"
-    ia = fr["induction_actions"]
-    cold = {"yes": "Yes", "no": "No"}.get(str(r["induction_cold_shock_required"]).lower(), "Unknown")
+    def card(color, title, line, text="", note=""):
+        body = f"<b>{html.escape(title[0])}</b> · {html.escape(title[1])}<br>{html.escape(line)}"
+        if text:
+            body += f"<br>{html.escape(text)}"
+        if note:
+            body += f"<br><small style='opacity:0.7'>{html.escape(note)}</small>"
+        st.markdown(f"<div style='border:2px solid {color}; border-left:8px solid {color}; border-radius:8px; "
+                    f"padding:0.6rem 0.9rem; margin:0.4rem 0;'>{body}</div>", unsafe_allow_html=True)
 
-    with st.container(border=True):
-        st.markdown(f"**Inoculation** · day 0")
-        st.write(t["preparation_actions"])
-        st.caption(t["colonisation_cautions"])
-    with st.container(border=True):
-        st.markdown(f"**Fully colonised** · {days('Fully colonised')}")
-        st.write(COLONISED_NOTE)
-        st.caption(t["colonisation_cautions"])
-    with st.container(border=True):
-        head = f"**Start induction** · {days('Start induction')}"
-        st.markdown(head + ("  &nbsp; :orange-badge[inferred]" if inferred else ""))
-        tgt = r["induction_temperature_target_C"]
-        st.write(f"Temperature: **{t['induction_temperature_action']}**"
-                 + (f", target **{tgt:g} °C**" if str(tgt) not in ("", "nan") else "") + f" · Cold shock: **{cold}**")
-        st.write(f"Light: {ia['light']}  \nFresh air: {ia['fresh_air']}  \nHumidity: {ia['humidity']}  \nOther: {ia['other']}")
-        if inferred:
-            st.caption("Inferred from other columns of the guide, not stated in it.")
-        if species == "Lentinula edodes":
-            st.info(f"Unresolved: {t['requirements_unresolved']}")
-    with st.container(border=True):
-        st.markdown(f"**Pinning** · {days('Pinning')}")
-        st.write(f"Keep {fr['fruiting_temp_C']['min']}–{fr['fruiting_temp_C']['max']} °C, "
-                 f"{fr['fruiting_rh_pct']['min']}–{fr['fruiting_rh_pct']['max']}% RH, CO2 below {fr['co2_max_ppm']} ppm.")
-        st.caption(t["fruiting_cautions"])
-    with st.container(border=True):
-        st.markdown(f"**First harvest** · {days('First harvest')}")
-        st.write(f"About {fr['pinning_to_harvest']} days from pinning to harvest.")
-        st.caption(t["fruiting_cautions"])
+    inc_t = rng(r["incubation_temp_min_C"], r["incubation_temp_max_C"], " °C")
+    inc_rh = val(r["incubation_RH_pct"], " %")
+    fr_t = rng(r["fruiting_temp_min_C"], r["fruiting_temp_max_C"], " °C")
+    fr_rh = rng(r["fruiting_RH_min_pct"], r["fruiting_RH_max_pct"], " %")
+    light = val(t["induction_light_action"])
+
+    def conds(temp, rh, lt):
+        return f"🌡️ {temp} · 💧 {rh} · 💡 {lt}"
+
+    def span(label):
+        s_ = tl.loc[label]
+        return f"day {s_['start_day']}–{s_['end_day']} (typical {s_['typical_day']})"
+
+    prep = val(t["preparation_actions"]) if str(t["preparation_actions"]) != "nan" else \
+        "Mix spawn into the cooled substrate and seal."
+    induct = val(t["induction_actions"]) if str(t["induction_actions"]) != "nan" else \
+        "Move to fruiting conditions, open the bag, give light and fresh air."
+    card(EVENT_COLOR, ("Inoculation", "day 0"), conds(inc_t, inc_rh, NIG), prep)
+    card(STAGE_COLOR, ("Colonising", f"day {col_days['min']}-{col_days['max']} (typical {col_days['typical']})"),
+         conds(inc_t, inc_rh, NIG))
+    card(EVENT_COLOR, ("Induction", f"day {ind_day:g}"), conds(fr_t, fr_rh, light), induct,
+         note=flow.FULLY_COLONISED_NOTE)
+    card(STAGE_COLOR, ("Fruiting", f"day {ind_row['start_day']}-{har_row['end_day']} "
+                       f"(typical {ind_day:g}-{har_day:g})"), conds(fr_t, fr_rh, light))
+    card(EVENT_COLOR, ("Harvest", f"day {har_day:g}"), conds(fr_t, fr_rh, NIG),
+         "Pick when cap edges flatten, before spores drop.")
+    if species == "Lentinula edodes":
+        st.info(f"Unresolved: {t['requirements_unresolved']}")
 
     st.caption(f"Source: {col['source']} · evidence: {r['evidence_type']} · confidence: {col['confidence']}. "
                f"Row used: {row_note}. Consensus values, not a prediction.")
@@ -145,42 +251,6 @@ else:
         else:
             st.caption("Your photos in Monitor will update it into the Colonisation forecast.")
 
-# --- stage 2: fruiting ---------------------------------------------------------------------
-if fruit is not None:
-    st.subheader("Stage 2: Fruiting")
-    if fruit.is_preview:
-        flow.preview("Fruiting", fruit.note)
-    else:
-        fv = fruit.value
-        ev = {n: (a, b) for n, a, b in dates.value}
-
-        def span(name):
-            a, b = ev[name]
-            return a.strftime("%d %b") + ("" if a == b else f" – {b.strftime('%d %b')}")
-
-        f1, f2, f3 = st.columns(3)
-        f1.metric(pipeline.MARKER_LABEL, span(pipeline.MARKER_LABEL), help="Project assumption: the 90% day + 2 days")
-        f2.metric("Pinning", span("Pinning"), help=f"{fv['days_to_pinning']} days after the start of induction")
-        f3.metric("First harvest", span("First harvest"), help=f"{fv['first_harvest']} days after the start of induction")
-        ia = fv["induction_actions"]
-        steps = [f"**{k}:** {ia[key]}" for k, key in (("Temperature", "temperature"), ("Light", "light"),
-                                                   ("Fresh air", "fresh_air"), ("Humidity", "humidity"),
-                                                   ("Other", "other")) if isinstance(ia[key], str) and ia[key].strip()]
-        st.markdown("**Induction actions**")
-        if isinstance(ia["overview"], str) and ia["overview"].strip():
-            st.write(ia["overview"])
-        st.markdown("\n".join(f"- {x}" for x in steps))
-        if fv["inferred"]:
-            st.markdown(":orange-badge[Inferred] These induction actions are inferred from other columns of the "
-                        "guide, not stated in it.")
-        t, rh = fv["fruiting_temp_C"], fv["fruiting_rh_pct"]
-        g1, g2, g3 = st.columns(3)
-        g1.metric("Fruiting temperature", f"{t['min']}–{t['max']} °C", help=f"Optimum {t['opt']} °C")
-        g2.metric("Fruiting humidity", f"{rh['min']}–{rh['max']} % RH")
-        g3.metric("CO2", f"below {fv['co2_max_ppm']} ppm")
-        flow.show_source(fruit)
-        st.caption(dates.note)
-
 # --- warnings -----------------------------------------------------------------------------------
 for w in result.warnings.value:
     st.warning(w)
@@ -204,10 +274,9 @@ if result.harvest_readiness is not None:
 
 # --- hand over to Monitor ----------------------------------------------------------------
 if st.button("Save this plan and open Monitor", type="primary"):
-    ss["recipe"] = {"preset": pipeline.BASELINE, "moisture": pipeline.MOISTURE, "spawn_pct": pipeline.SPAWN_PCT,
-                    "substrate": "sawdust"}
     row = flow.species_row()
-    ss["batch"] = {"batch_label": f"{what} {ss['inoc_date'].isoformat()}", "species": row["latin"] if row else what,
+    ss["batch"] = {"batch_label": batch_label or f"{what} {ss['inoc_date'].isoformat()}",
+                   "species": row["latin"] if row else what,
                    "inoc_date": ss["inoc_date"], "n_containers": n, "temp_c": ss["temp_c"],
-                   "substrate": "sawdust", "spawn_pct": float(pipeline.SPAWN_PCT)}
+                   "substrate": substrate, "spawn_pct": float(pipeline.SPAWN_PCT)}
     st.switch_page("pages/4_Monitor.py")

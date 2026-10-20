@@ -62,6 +62,7 @@ def get_batch():
     b = ss["pipeline_batch"]
     b.goal, b.choice, b.custom_name = ss["goal"], ss["choice"], ss["custom_name"]
     b.environment, b.temp_c, b.recipe, b.inoc_date = ss["environment"], ss["temp_c"], ss["recipe"], ss["inoc_date"]
+    b.plan_size = ss.get("plan_size")
     return b
 
 
