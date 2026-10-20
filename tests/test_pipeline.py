@@ -317,27 +317,17 @@ def test_old_backup_without_environments_still_restores():
     assert Batch.from_dict({**food().to_dict(), "env_name": None}).env_name is None
 
 
-def test_grow_log_page_environment_next_stage_and_backup():
+def test_monitor_page_environment_boxes_stages_and_sample_photo():
     from streamlit.testing.v1 import AppTest
-    at = AppTest.from_file(str(Path(__file__).parents[1] / "mycodemo/app/pages/4_Monitor.py"), default_timeout=60).run()
+    at = AppTest.from_file(str(Path(__file__).parents[1] / "mycodemo/app/pages/4_Monitor.py"), default_timeout=60)
+    at.session_state["goal"], at.session_state["choice"] = "Food", "Blue Oyster"
+    at.session_state["env_where"], at.session_state["env_size"] = "Tent", {"Tent": 1.0}
+    at.session_state["batch"] = {"batch_label": "B1", "species": "Pleurotus ostreatus", "inoc_date": START,
+                                 "n_containers": 2, "temp_c": 24.0, "substrate": "sawdust", "spawn_pct": 10.0}
+    at.run()
     assert not at.exception
-    assert [r.label for r in at.radio if r.label == "What is this batch for?"]      # no plan yet: food/materials box
-    assert at.radio(key="b_goal").value == "Food"
-    next_btn = next(b for b in at.button if b.label.startswith("Next stage"))
-    assert next_btn.disabled                                                       # nothing colonising yet
-    at.text_input[0].set_value("Garage shelf")                                     # environment form
-    at.number_input[0].set_value(18.0)
-    next(b for b in at.button if b.label == "Save environment").click()
-    at.run()
-    assert at.session_state["environments"]["Garage shelf"].temp_c == 18.0
-    at.selectbox(key="b_env_ref").select("Garage shelf").run()
-    assert at.session_state["pipeline_batch"].env_name == "Garage shelf"
-    assert at.session_state["pipeline_batch"].temp_c == 18.0
-    next(b for b in at.button if b.label == "Colonising").click()
-    at.run()
-    next(b for b in at.button if b.label == "Next stage: Fruiting").click()
-    at.run()
-    assert [e["stage"] for e in list(at.session_state["stage_log"].values())[0]] == ["Colonising", "Fruiting"]
-    at.radio(key="b_goal").set_value("Materials").run()
-    assert not at.exception
-    assert any(b.label == "Pre-treatment" for b in at.button)
+    assert [s.value for s in at.subheader] == ["Tent"]
+    assert at.selectbox(key="sample_Tent").options == ["B1-01", "B1-02"]
+    assert [b.label for b in at.button if b.label in ("Spawning", "Ready for harvest")] == ["Spawning", "Ready for harvest"]
+    assert any(b.label == "Save" for b in at.button)
+
