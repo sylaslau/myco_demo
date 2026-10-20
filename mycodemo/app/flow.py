@@ -1,5 +1,6 @@
 """Shared helpers for the grower pages: choices carried in st.session_state, the Preview style, lists."""
 
+from dataclasses import replace
 from datetime import date
 
 import streamlit as st
@@ -64,6 +65,37 @@ def get_batch():
     b.environment, b.temp_c, b.recipe, b.inoc_date = ss["environment"], ss["temp_c"], ss["recipe"], ss["inoc_date"]
     b.plan_size = ss.get("plan_size")
     return b
+
+
+def in_forecast(row):
+    """A photo marked on Check image counts only once "I checked the result" was ticked; an HSV photo always counts."""
+    return row.get("method") != pipeline.MARKED_METHOD or bool(row.get("checked"))
+
+
+def sample_batch(exclude=None, force_checked=None):
+    """The batch with every Monitor sample photo (ss['sample_photos']) copied in, for pipeline.run (the Recipe page
+    reads the same record). exclude / force_checked = (sample ID, file) of one photo to leave out / to count as checked
+    (Check image feedback): then a copy is returned and the shared record is left as it is."""
+    ss = st.session_state
+    b = get_batch()
+    if b.goal is None:                           # no plan from the earlier pages: Monitor's own default
+        b.goal, b.choice = "Food", "Blue Oyster"
+    plan = ss.get("batch")
+    if plan:
+        b.inoc_date, b.temp_c = plan["inoc_date"], plan["temp_c"]
+    photos = []
+    for sample, rows in ss.get("sample_photos", {}).items():
+        for r in rows:
+            key = (sample, r["file"])
+            forced = key == force_checked
+            if key == exclude or not (forced or in_forecast(r)):
+                continue
+            photos.append(pipeline.Photo(day=r["day"], file=r["file"], coverage=r["coverage"], method=r["method"],
+                                         quality=r["quality"], sample=sample, checked=forced or bool(r.get("checked"))))
+    if exclude is None and force_checked is None:
+        b.photos = photos
+        return b
+    return replace(b, photos=photos)
 
 
 def run():

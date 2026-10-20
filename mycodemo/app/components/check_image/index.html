@@ -1,0 +1,251 @@
+<!doctype html>
+<!-- Check image: the 2.4 marking editor (EDITOR_HTML of notebook 2.4) as a two-way Streamlit component.
+     Plain JS, no npm: it speaks the Streamlit component messages itself (componentReady, render, setFrameHeight,
+     setComponentValue). It gets one photo (data URL) and its batch/sample/date from the app; Save returns the marks. -->
+<html lang="en"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"><title>Check image</title>
+<style>
+*{box-sizing:border-box}body{margin:0;background:#f3f5f3;color:#20372f;font:15px system-ui,sans-serif}
+.tips{padding:0}.tips div{background:#fff4da;border:1px solid #e8d49b;border-radius:10px;padding:12px 16px;line-height:1.5}
+main{padding:14px 0 10px;display:grid;grid-template-columns:270px 1fr;gap:16px}
+.panel{background:#fff;border:1px solid #d8e1da;border-radius:12px;padding:18px}
+h2{font-size:17px;margin:0 0 12px}label{display:block;margin:10px 0 4px;font-weight:600}
+input,select,button{font:inherit}
+input[type=text],input[type=number],input[type=date],select{width:100%;padding:8px;border:1px solid #b4c6bb;border-radius:6px}
+input[readonly]{background:#eef3f0;color:#33493f}
+button{padding:9px 12px;border-radius:7px;border:1px solid #9bb5a4;background:#f7faf8;color:#20372f;cursor:pointer}
+button:hover{background:#dfebe3}button.primary{background:#28684f;color:#fff;border-color:#28684f}
+button.active{background:#d2eee1;border-color:#27674f;box-shadow:inset 0 0 0 2px #27674f}
+button.pink{border-color:#e114b9;background:#ffe9f9}button.pink.active{background:#ffc7f1;box-shadow:inset 0 0 0 2px #e114b9}
+button.green{border-color:#1f9d63;background:#e3f8ec}button.green.active{background:#bdeed3;box-shadow:inset 0 0 0 2px #1f9d63}
+.row{display:flex;gap:8px;flex-wrap:wrap;align-items:center}.row>*{flex:1}
+.samples{display:grid;grid-template-columns:1fr 1fr;gap:12px;margin:12px 0}.samples button{width:100%}
+.group{margin:12px 0}.group .gl{display:block;font-weight:600;margin-bottom:6px}
+.brush{display:flex;flex-wrap:wrap;gap:8px;align-items:center}.brush label{margin:0;display:flex;gap:8px;align-items:center;font-weight:400}
+canvas{display:block;max-width:100%;height:auto;margin:10px auto;cursor:crosshair;background:#e9edeb;border:1px solid #d1dcd5;touch-action:none}
+.hint{font-size:13px;color:#52695b;line-height:1.5;margin:6px 0 0}
+.check{display:flex;gap:8px;align-items:flex-start;font-size:14px;font-weight:400}.check input{margin-top:4px}
+#status{margin:14px 0;background:#fff4da;border:1px solid #e8d49b;border-radius:10px;padding:14px 18px;line-height:1.4;font-size:19px;font-weight:700;min-height:56px}
+.prevrow{display:flex;flex-wrap:wrap;align-items:center;justify-content:space-between;gap:10px 24px;margin:6px 0 0}.prevrow .check{margin:0;font-size:19px;font-weight:600;align-items:center}.prevrow .check input{width:24px;height:24px;margin:0}#pct{font-size:26px;font-weight:700;color:#173b31}.sampletext{font-size:15px;color:#33493f;margin:12px 0 6px;line-height:1.5}
+.legend{display:flex;flex-wrap:wrap;gap:6px 18px;font-size:13px;color:#33493f;margin:4px 0 12px}
+.legend i{display:inline-block;vertical-align:middle;margin-right:6px}
+.sw-line{width:20px;height:0;border-top:3px solid}.sw-dot{width:11px;height:11px;border-radius:50%;border:1.5px solid #fff;box-shadow:0 0 0 1px #888}.sw-box{width:16px;height:12px;border-radius:2px}
+details{margin:14px 0;border:1px solid #d8e1da;border-radius:8px;padding:10px 14px;background:#fafcfb}summary{cursor:pointer;font-weight:600}
+.count{font-size:13px;color:#52695b}.space{margin-top:14px}
+.save .check{font-size:17px;font-weight:600;align-items:center}.save .check input{width:22px;height:22px;margin:0}
+@media(max-width:850px){main{grid-template-columns:1fr}.samples{grid-template-columns:1fr}}
+</style></head><body>
+<div class="tips"><div><b>Photo tips:</b> Fill the frame with the substrate, or use a dark background. Keep the same distance each time. No flash, avoid glare.</div></div>
+<main><aside class="panel">
+<h2>1. Observation</h2>
+<label for="batch">Batch ID</label><input id="batch" type="text" readonly>
+<label for="start">Batch start date</label><input id="start" type="date" readonly>
+<label for="sample">Sample ID</label><input id="sample" type="text" readonly>
+<label for="view">Surface / view</label><select id="view"><option value="top">Top</option><option value="side">Side</option><option value="bottom">Bottom</option></select>
+<label for="date">Date</label><input id="date" type="date">
+<p id="filename" class="count"></p>
+</aside>
+<section class="panel">
+<h2>2. Trace and label the substrate</h2>
+<label class="check"><input id="whole" type="checkbox"><span>Substrate fills the whole photo</span></label>
+<div class="group"><span class="gl">Outline</span><div class="row"><button data-tool="roi" id="redraw">Redraw outline</button><button id="guess">Guess outline again</button><button id="finish">Finish outline (Enter)</button><button id="clearPending">Cancel</button></div></div>
+<p class="sampletext">Click a few typical spots for both mycelium and substrate. The program finds every part that looks similar.</p>
+<div class="samples">
+<div><button class="pink" data-tool="mycelium_seed">Click on mycelium</button></div>
+<div><button class="green" data-tool="substrate_seed">Click on bare substrate</button></div>
+</div>
+<div class="group"><span class="gl">Correction brush</span><div class="brush"><button class="pink" data-tool="paint_mycelium">Paint mycelium</button><button class="green" data-tool="paint_substrate">Paint bare substrate</button><label>Size <input id="brush" type="range" min="1" max="20" value="4"></label></div><p class="hint">Use the brush when the result is wrong.</p></div>
+<div class="row"><button id="undo">Undo</button><button id="clearSeeds">Clear clicks</button><button id="clearStrokes">Clear brush strokes</button></div>
+<div id="status">Loading the photo…</div>
+<div class="prevrow"><label class="check"><input id="showPrev" type="checkbox" checked><span>Show the preview colours</span></label><div id="pct"></div></div>
+<canvas id="canvas" width="900" height="520"></canvas>
+<div class="legend"><span><i class="sw-line" style="border-color:#00d9df"></i>cyan = outline</span><span><i class="sw-dot" style="background:#ff21ce"></i>pink dot = mycelium sample</span><span><i class="sw-dot" style="background:#00f594"></i>green dot = bare substrate sample</span><span><i class="sw-box" style="background:#e114b9"></i>magenta = counted as mycelium</span><span><i class="sw-box" style="background:#ffb000"></i>amber = not sure</span></div>
+<details id="advanced"><summary>Advanced</summary>
+<label for="method">Method</label><select id="method"><option value="auto">Auto: samples, otherwise clustering</option><option value="seeded">Samples only (both kinds required)</option><option value="cluster">Colour + texture clustering</option><option value="hsv">HSV comparison baseline</option><option value="manual">Manual correction polygons</option></select>
+<label for="radius">Sample size (% of the short side)</label><input id="radius" type="number" min="0.1" max="10" step="0.1" value="1.5">
+<div class="group"><span class="gl">Uncertain areas and background holes</span><div class="row"><button data-tool="uncertain">Mark uncertain area</button><button data-tool="background">Exclude background hole</button></div></div>
+<div class="group"><span class="gl">Old correction polygons</span><div class="row"><button data-tool="mycelium">Correct: mycelium polygon</button><button data-tool="substrate">Correct: bare substrate polygon</button><button id="clearPolys">Clear polygons</button></div></div>
+</details>
+<h2 class="space">3. Save</h2>
+<div class="save"><label class="check"><input id="reviewed" type="checkbox"><span>I checked the result</span></label></div>
+<div class="row space"><button id="save" class="primary">Save</button></div>
+<p class="hint">The preview is quick and approximate; the app works out the final % after Save.</p>
+</section></main>
+<script>
+'use strict';
+/* ---- Streamlit component messages (the same ones streamlit-component-lib sends) ---- */
+function toStreamlit(type,data){window.parent.postMessage({isStreamlitMessage:true,type,...data},'*');}
+let lastHeight=0;
+function sendHeight(){const h=Math.ceil(document.body.getBoundingClientRect().height)+4;if(h!==lastHeight){lastHeight=h;toStreamlit('streamlit:setFrameHeight',{height:h});}}
+new ResizeObserver(sendHeight).observe(document.body);
+
+const VIEWS=['top','side','bottom'];
+const $=id=>document.getElementById(id);const canvas=$('canvas'),ctx=canvas.getContext('2d');
+let photos=[],index=-1,tool='mycelium_seed',pending=[],undoStack=[],drag=null,stroke=null,down=null,photoId=null;
+const scratch=document.createElement('canvas'),sctx=scratch.getContext('2d',{willReadFrequently:true});
+function clone(x){return JSON.parse(JSON.stringify(x));}
+function clamp01(v){return Math.min(1,Math.max(0,v));}
+function base(record={}){return {image_path:'',photo_id:'',batch_id:'',batch_start_date:'',sample_id:'',view:'top',method:'auto',seeds:[],strokes:[],corrections:[],background_exclusions:[],reviewed:false,selected_for_forecast:true,full_frame_substrate_confirmed:false,...record};}
+function current(){return index>=0?photos[index]:null;}
+function message(s){$('status').textContent=s;}
+function pushUndo(){if(current())undoStack.push(clone(current().record));}
+function changed(){const p=current();if(p){p.record.reviewed=false;$('reviewed').checked=false;refreshPreview();}draw();}
+
+/* ---- geometry ---- */
+function inside(points,x,y){let c=false;for(let i=0,j=points.length-1;i<points.length;j=i++){const [xi,yi]=points[i],[xj,yj]=points[j];if((yi>y)!==(yj>y)&&x<(xj-xi)*(y-yi)/(yj-yi)+xi)c=!c;}return c;}
+function orient(a,b,c){return (b[0]-a[0])*(c[1]-a[1])-(b[1]-a[1])*(c[0]-a[0]);}
+function selfCrosses(pts){const n=pts.length;for(let i=0;i<n;i++)for(let j=i+1;j<n;j++){if((j-i)%n===1||(j-i)%n===n-1)continue;const a=pts[i],b=pts[(i+1)%n],c=pts[j],d=pts[(j+1)%n];if(orient(a,b,c)*orient(a,b,d)<0&&orient(c,d,a)*orient(c,d,b)<0)return true;}return false;}
+function hull(pts){pts=pts.slice().sort((a,b)=>a[0]-b[0]||a[1]-b[1]);const lo=[];for(const p of pts){while(lo.length>=2&&orient(lo[lo.length-2],lo[lo.length-1],p)<=0)lo.pop();lo.push(p);}const up=[];for(let i=pts.length-1;i>=0;i--){const p=pts[i];while(up.length>=2&&orient(up[up.length-2],up[up.length-1],p)<=0)up.pop();up.push(p);}lo.pop();up.pop();return lo.concat(up);}
+function segDist(p,a,b){const dx=b[0]-a[0],dy=b[1]-a[1],L=dx*dx+dy*dy;let t=L?((p[0]-a[0])*dx+(p[1]-a[1])*dy)/L:0;t=Math.max(0,Math.min(1,t));return Math.hypot(p[0]-a[0]-t*dx,p[1]-a[1]-t*dy);}
+function dp(chain,eps){if(chain.length<3)return chain;let best=-1,bi=0;for(let i=1;i<chain.length-1;i++){const d=segDist(chain[i],chain[0],chain[chain.length-1]);if(d>best){best=d;bi=i;}}if(best<=eps)return [chain[0],chain[chain.length-1]];const l=dp(chain.slice(0,bi+1),eps),r=dp(chain.slice(bi),eps);return l.slice(0,-1).concat(r);}
+function simplifyRing(ring,eps){let far=0,fd=-1;for(let i=1;i<ring.length;i++){const d=Math.hypot(ring[i][0]-ring[0][0],ring[i][1]-ring[0][1]);if(d>fd){fd=d;far=i;}}const a=dp(ring.slice(0,far+1),eps),b=dp(ring.slice(far).concat([ring[0]]),eps);return a.slice(0,-1).concat(b.slice(0,-1));}
+function toTarget(ring,target){if(ring.length<=target)return ring;let lo=0,hi=.5,best=simplifyRing(ring,hi);for(let k=0;k<24;k++){const mid=(lo+hi)/2,s=simplifyRing(ring,mid);if(s.length>target)lo=mid;else{hi=mid;best=s;}}return best.length>=3?best:ring.slice(0,3);}
+
+/* ---- automatic outline: brighter substrate on a darker background ---- */
+function outlineGuess(img){
+const sc=Math.min(1,200/Math.max(img.naturalWidth,img.naturalHeight)),w=Math.max(8,Math.round(img.naturalWidth*sc)),h=Math.max(8,Math.round(img.naturalHeight*sc));
+scratch.width=w;scratch.height=h;sctx.drawImage(img,0,0,w,h);const d=sctx.getImageData(0,0,w,h).data,N=w*h,g=new Uint8Array(N),hist=new Array(256).fill(0);
+for(let i=0;i<N;i++){const v=Math.round(.2126*d[4*i]+.7152*d[4*i+1]+.0722*d[4*i+2]);g[i]=v;hist[v]++;}
+let sum=0;for(let t=0;t<256;t++)sum+=t*hist[t];let wb=0,sb=0,best=-1,thr=128;
+for(let t=0;t<256;t++){wb+=hist[t];if(!wb)continue;const wf=N-wb;if(!wf)break;sb+=t*hist[t];const mb=sb/wb,mf=(sum-sb)/wf,bt=wb*wf*(mb-mf)*(mb-mf);if(bt>best){best=bt;thr=t;}}
+const lab=new Int32Array(N),stack=new Int32Array(N);let nl=0,bestLab=0,bestN=0;
+for(let s=0;s<N;s++){if(g[s]<=thr||lab[s])continue;nl++;let sp=0,cnt=0;stack[sp++]=s;lab[s]=nl;
+while(sp){const q=stack[--sp];cnt++;const x=q%w,y=(q-x)/w;
+if(x>0&&g[q-1]>thr&&!lab[q-1]){lab[q-1]=nl;stack[sp++]=q-1;}
+if(x<w-1&&g[q+1]>thr&&!lab[q+1]){lab[q+1]=nl;stack[sp++]=q+1;}
+if(y>0&&g[q-w]>thr&&!lab[q-w]){lab[q-w]=nl;stack[sp++]=q-w;}
+if(y<h-1&&g[q+w]>thr&&!lab[q+w]){lab[q+w]=nl;stack[sp++]=q+w;}}
+if(cnt>bestN){bestN=cnt;bestLab=nl;}}
+if(bestN<.02*N)return null;
+const pts=[];for(let y=0;y<h;y++)for(let x=0;x<w;x++){const q=y*w+x;if(lab[q]!==bestLab)continue;
+if(x===0||y===0||x===w-1||y===h-1||lab[q-1]!==bestLab||lab[q+1]!==bestLab||lab[q-w]!==bestLab||lab[q+w]!==bestLab){pts.push([x/w,y/h],[(x+1)/w,y/h],[x/w,(y+1)/h],[(x+1)/w,(y+1)/h]);}}
+const ring=toTarget(hull(pts),24);return ring.length>=3?ring.map(([x,y])=>[clamp01(x),clamp01(y)]):null;}
+function guessOutline(p){const pts=outlineGuess(p.image);if(!pts)return false;p.record.roi={kind:'polygon',points:pts};return true;}
+
+/* ---- live preview: the same idea as traced_coverage.py (nearest colour/texture to the samples, inside the outline) ---- */
+function boxMean(a,w,h,r){const I=new Float64Array((w+1)*(h+1));for(let y=0;y<h;y++){let row=0;for(let x=0;x<w;x++){row+=a[y*w+x];I[(y+1)*(w+1)+x+1]=I[y*(w+1)+x+1]+row;}}
+const out=new Float32Array(w*h);for(let y=0;y<h;y++){const y0=Math.max(0,y-r),y1=Math.min(h-1,y+r);for(let x=0;x<w;x++){const x0=Math.max(0,x-r),x1=Math.min(w-1,x+r);out[y*w+x]=(I[(y1+1)*(w+1)+x1+1]-I[y0*(w+1)+x1+1]-I[(y1+1)*(w+1)+x0]+I[y0*(w+1)+x0])/((x1-x0+1)*(y1-y0+1));}}return out;}
+function ensureFeatures(p){if(p.feat)return p.feat;const img=p.image,sc=Math.min(1,480/Math.max(img.naturalWidth,img.naturalHeight)),w=Math.max(8,Math.round(img.naturalWidth*sc)),h=Math.max(8,Math.round(img.naturalHeight*sc));
+scratch.width=w;scratch.height=h;sctx.drawImage(img,0,0,w,h);const d=sctx.getImageData(0,0,w,h).data,N=w*h,F=new Float32Array(N*6),gray=new Float32Array(N),gray2=new Float32Array(N);
+const lin=v=>{v/=255;return v<=.04045?v/12.92:Math.pow((v+.055)/1.055,2.4);},f=t=>t>.008856451679?Math.cbrt(t):t/(3*(6/29)**2)+4/29;
+for(let i=0;i<N;i++){const R=d[4*i],G=d[4*i+1],B=d[4*i+2],r=lin(R),gg=lin(G),b=lin(B);
+const X=.4124564*r+.3575761*gg+.1804375*b,Y=.2126729*r+.7151522*gg+.072175*b,Z=.0193339*r+.119192*gg+.9503041*b;
+const fx=f(X/.95047),fy=f(Y),fz=f(Z/1.08883);F[6*i]=(116*fy-16)/100;F[6*i+1]=500*(fx-fy)/128*.7;F[6*i+2]=200*(fy-fz)/128*.7;
+const gv=(.2126*R+.7152*G+.0722*B)/255;gray[i]=gv;gray2[i]=gv*gv;const mx=Math.max(R,G,B)/255,mn=Math.min(R,G,B)/255;F[6*i+5]=(mx>0?(mx-mn)/mx:0)*.25;}
+const m=boxMean(gray,w,h,2),m2=boxMean(gray2,w,h,2);
+for(let y=0;y<h;y++)for(let x=0;x<w;x++){const i=y*w+x,tex=Math.sqrt(Math.max(0,m2[i]-m[i]*m[i])),gx=(gray[y*w+Math.min(w-1,x+1)]-gray[y*w+Math.max(0,x-1)])/2,gy=(gray[Math.min(h-1,y+1)*w+x]-gray[Math.max(0,y-1)*w+x])/2;
+F[6*i+3]=Math.min(2,Math.max(0,tex/.15))*.35;F[6*i+4]=Math.min(2,Math.max(0,Math.hypot(gx,gy)/.2))*.2;}
+p.feat={w,h,F};return p.feat;}
+function pathPoly(c,points,w,h){c.beginPath();points.forEach(([x,y],i)=>i?c.lineTo(x*w,y*h):c.moveTo(x*w,y*h));c.closePath();}
+function strokePath(c,s,w,h,sizePx){c.lineCap='round';c.lineJoin='round';c.lineWidth=sizePx;const pts=s.points;for(const [x,y] of pts){c.beginPath();c.arc(x*w,y*h,sizePx/2,0,Math.PI*2);c.fill();}
+if(pts.length>1){c.beginPath();pts.forEach(([x,y],i)=>i?c.lineTo(x*w,y*h):c.moveTo(x*w,y*h));c.stroke();}}
+function raster(w,h,fn){scratch.width=w;scratch.height=h;sctx.clearRect(0,0,w,h);sctx.fillStyle='#000';sctx.strokeStyle='#000';fn(sctx);const a=sctx.getImageData(0,0,w,h).data,out=new Uint8Array(w*h);for(let i=0;i<out.length;i++)out[i]=a[4*i+3]>127?1:0;return out;}
+function computePreview(p){
+const r=p.record;if(!p.image)return null;const {w,h,F}=ensureFeatures(p),N=w*h;let roi;
+if(r.full_frame_substrate_confirmed)roi=new Uint8Array(N).fill(1);else if(r.roi?.points?.length>=3)roi=raster(w,h,c=>{pathPoly(c,r.roi.points,w,h);c.fill();});else return {status:'Draw the outline to see a preview.'};
+for(const pts of r.background_exclusions||[]){const hole=raster(w,h,c=>{pathPoly(c,pts,w,h);c.fill();});for(let i=0;i<N;i++)if(hole[i])roi[i]=0;}
+let nroi=0;for(let i=0;i<N;i++)nroi+=roi[i];if(!nroi)return {status:'The outline is empty.'};
+const cls=new Int8Array(N).fill(-1);
+for(const s of r.seeds||[]){const rad=Math.max(1,(s.radius||.015)*Math.min(h,w)),cx=s.x*(w-1),cy=s.y*(h-1),k=s.label==='mycelium'?0:1;
+for(let y=Math.max(0,Math.floor(cy-rad));y<=Math.min(h-1,Math.ceil(cy+rad));y++)for(let x=Math.max(0,Math.floor(cx-rad));x<=Math.min(w-1,Math.ceil(cx+rad));x++){if((x-cx)**2+(y-cy)**2<=rad*rad&&roi[y*w+x]&&cls[y*w+x]<0)cls[y*w+x]=k;}}
+const cnt=[0,0],mean=[new Float64Array(6),new Float64Array(6)],v2=[new Float64Array(6),new Float64Array(6)];
+for(let i=0;i<N;i++){const k=cls[i];if(k<0)continue;cnt[k]++;for(let j=0;j<6;j++){const v=F[6*i+j];mean[k][j]+=v;v2[k][j]+=v*v;}}
+if(!cnt[0]||!cnt[1])return {status:'Click on mycelium and on bare substrate to see a preview.'};
+const sc=new Float64Array(6);let sep=0;
+for(let j=0;j<6;j++){mean[0][j]/=cnt[0];mean[1][j]/=cnt[1];const va=v2[0][j]/cnt[0]-mean[0][j]**2,vb=v2[1][j]/cnt[1]-mean[1][j]**2;sc[j]=Math.sqrt((va+vb)/2+.03**2);sep+=((mean[0][j]-mean[1][j])/sc[j])**2;}
+sep=Math.sqrt(sep);const mask=new Uint8Array(N),unc=new Uint8Array(N);
+for(let i=0;i<N;i++){if(!roi[i])continue;let d0=0,d1=0;for(let j=0;j<6;j++){const v=F[6*i+j];d0+=((v-mean[0][j])/sc[j])**2;d1+=((v-mean[1][j])/sc[j])**2;}
+mask[i]=d0<=d1?1:0;unc[i]=(Math.abs(d0-d1)/(d0+d1+1e-8)<.18||Math.min(d0,d1)>25||sep<1)?1:0;}
+for(const c of r.corrections||[]){const reg=raster(w,h,cc=>{pathPoly(cc,c.points,w,h);cc.fill();});for(let i=0;i<N;i++){if(!reg[i]||!roi[i])continue;if(c.label==='mycelium'){mask[i]=1;unc[i]=0;}else if(c.label==='substrate'){mask[i]=0;unc[i]=0;}else unc[i]=1;}}
+for(const s of r.strokes||[]){const reg=raster(w,h,cc=>strokePath(cc,s,w,h,s.size*Math.min(w,h)));for(let i=0;i<N;i++){if(!reg[i]||!roi[i])continue;if(s.label==='mycelium'){mask[i]=1;unc[i]=0;}else{mask[i]=0;unc[i]=0;}}}
+let nm=0;const ov=document.createElement('canvas');ov.width=w;ov.height=h;const octx=ov.getContext('2d'),img=octx.createImageData(w,h);
+for(let i=0;i<N;i++){if(!roi[i])continue;if(mask[i])nm++;if(unc[i]){img.data.set([255,176,0,140],4*i);}else if(mask[i]){img.data.set([225,20,185,115],4*i);}}
+octx.putImageData(img,0,0);return {pct:100*nm/nroi,overlay:ov};}
+function refreshPreview(){const p=current();if(p?.image)p.prev=computePreview(p);}
+
+/* ---- drawing ---- */
+function polygon(points,colour,fill=true,close=true,dots=true){if(!points?.length)return;ctx.beginPath();points.forEach(([x,y],i)=>{i?ctx.lineTo(x*canvas.width,y*canvas.height):ctx.moveTo(x*canvas.width,y*canvas.height);});if(close)ctx.closePath();ctx.strokeStyle=colour;ctx.lineWidth=2;if(fill&&close){ctx.globalAlpha=.17;ctx.fillStyle=colour;ctx.fill();ctx.globalAlpha=1;}ctx.stroke();if(dots)for(const [x,y] of points){ctx.beginPath();ctx.arc(x*canvas.width,y*canvas.height,3,0,Math.PI*2);ctx.fillStyle=colour;ctx.fill();}}
+function setPct(p){$('pct').textContent=p?.prev&&p.prev.pct!==undefined?p.prev.pct.toFixed(1)+'% colonised (preview)':'% colonised (preview): –';}
+function draw(){ctx.clearRect(0,0,canvas.width,canvas.height);const p=current();setPct(p);
+if(!p?.image){ctx.fillStyle='#52695b';ctx.font='20px system-ui';ctx.fillText('No photo yet',35,65);return;}
+const W=canvas.width,H=canvas.height,r=p.record;ctx.drawImage(p.image,0,0,W,H);
+if($('showPrev').checked&&p.prev?.overlay)ctx.drawImage(p.prev.overlay,0,0,W,H);
+for(const points of r.background_exclusions||[])polygon(points,'#777');
+for(const c of r.corrections||[])polygon(c.points,c.label==='mycelium'?'#e114b9':c.label==='substrate'?'#20a56a':'#ffb000');
+if(r.full_frame_substrate_confirmed)polygon([[0,0],[1,0],[1,1],[0,1]],'#00d9df',false,true,false);
+if(r.roi?.points){polygon(r.roi.points,'#00d9df',false,true,false);for(const [x,y] of r.roi.points){ctx.beginPath();ctx.arc(x*W,y*H,6,0,Math.PI*2);ctx.fillStyle='#fff';ctx.fill();ctx.strokeStyle='#00a9ae';ctx.lineWidth=2;ctx.stroke();}}
+ctx.globalAlpha=.5;for(const s of r.strokes||[]){ctx.fillStyle=ctx.strokeStyle=s.label==='mycelium'?'#ff21ce':'#00f594';strokePath(ctx,s,W,H,s.size*Math.min(W,H));}ctx.globalAlpha=1;
+for(const s of r.seeds||[]){ctx.beginPath();ctx.arc(s.x*W,s.y*H,5,0,Math.PI*2);ctx.fillStyle=s.label==='mycelium'?'#ff21ce':'#00f594';ctx.fill();ctx.strokeStyle='#fff';ctx.lineWidth=1.5;ctx.stroke();}
+polygon(pending,'#fff',false,false);
+}
+
+/* ---- fields ---- */
+function readFields(){const p=current();if(!p)return;const r=p.record;r.view=$('view').value;
+if($('date').value==='')delete r.date;else r.date=$('date').value;
+r.method=$('method').value;r.reviewed=$('reviewed').checked;r.full_frame_substrate_confirmed=$('whole').checked;}
+function setTool(t,text){tool=t;for(const b of document.querySelectorAll('button[data-tool]'))b.classList.toggle('active',b.dataset.tool===t);if(text)message(text);}
+const TOOL_TEXT={mycelium_seed:'Click a few typical mycelium spots inside the outline.',substrate_seed:'Click a few typical bare-substrate spots inside the outline.',paint_mycelium:'Paint over mycelium that the preview missed.',paint_substrate:'Paint over bare substrate that the preview counted as mycelium.',roi:'Click around the edge of the substrate, then press Finish outline.',uncertain:'Click corners, then press Finish outline (Enter) to mark an unsure area.',background:'Click corners around a hole that is not substrate, then press Finish.',mycelium:'Click corners around mycelium, then press Finish.',substrate:'Click corners around bare substrate, then press Finish.'};
+function show(i,preserveUndo=false){index=i;pending=[];stroke=null;drag=null;if(!preserveUndo)undoStack=[];const p=current();if(!p)return;const r=p.record;
+$('batch').value=r.batch_id||'';$('start').value=r.batch_start_date||'';$('sample').value=r.sample_id||'';$('view').value=VIEWS.includes(r.view)?r.view:'top';$('date').value=r.date||'';
+$('method').value=r.method||'auto';$('whole').checked=!!r.full_frame_substrate_confirmed;$('reviewed').checked=!!r.reviewed;$('filename').textContent=r.image_path||'';
+if(p.image){const sc=Math.min(1,1000/Math.max(p.image.naturalWidth,p.image.naturalHeight));canvas.width=Math.round(p.image.naturalWidth*sc);canvas.height=Math.round(p.image.naturalHeight*sc);
+let guessed=false;if(!r.roi&&!r.full_frame_substrate_confirmed&&!p.noGuess)guessed=guessOutline(p);
+refreshPreview();message(guessed?'Outline guessed from the photo. Drag the white points to fix it, then click on mycelium and on bare substrate.':TOOL_TEXT[tool]||'');}
+draw();}
+async function decoded(src){return new Promise((resolve,reject)=>{const image=new Image();image.onload=()=>resolve(image);image.onerror=()=>reject(new Error('Cannot decode the photo'));image.src=src;});}
+
+/* ---- tools ---- */
+document.addEventListener('click',e=>{const b=e.target.closest('button[data-tool]');if(!b)return;b.blur();const p=current();
+if(pending.length){message('Finish or cancel the unfinished shape first.');return;}
+if(b.dataset.tool==='roi'&&p){pushUndo();delete p.record.roi;p.record.full_frame_substrate_confirmed=false;p.noGuess=true;$('whole').checked=false;changed();}
+setTool(b.dataset.tool,TOOL_TEXT[b.dataset.tool]);});
+$('guess').onclick=()=>{const p=current();if(!p?.image)return;pushUndo();delete p.record.roi;p.record.full_frame_substrate_confirmed=false;$('whole').checked=false;p.noGuess=false;if(guessOutline(p)){changed();message('Outline guessed again. Drag the white points to fix it.');}else{changed();message('No clear substrate found. Use Redraw outline.');}};
+function hitHandle(p,e){const pts=p.record.roi?.points;if(!pts)return -1;const rect=canvas.getBoundingClientRect();let best=-1,bd=14;pts.forEach(([x,y],i)=>{const d=Math.hypot(rect.left+x*rect.width-e.clientX,rect.top+y*rect.height-e.clientY);if(d<bd){bd=d;best=i;}});return best;}
+function norm(e){const rect=canvas.getBoundingClientRect();return [clamp01((e.clientX-rect.left)/rect.width),clamp01((e.clientY-rect.top)/rect.height)];}
+canvas.addEventListener('pointerdown',e=>{const p=current();if(!p?.image)return;e.preventDefault();canvas.setPointerCapture(e.pointerId);const [x,y]=norm(e),paint=tool.startsWith('paint_');
+const hit=(!pending.length&&!paint)?hitHandle(p,e):-1;
+if(hit>=0){pushUndo();drag={i:hit};return;}
+if(paint){pushUndo();stroke={label:tool==='paint_mycelium'?'mycelium':'substrate',size:Number($('brush').value)/100,points:[[x,y]]};p.record.strokes.push(stroke);draw();return;}
+down=[x,y];});
+canvas.addEventListener('pointermove',e=>{const p=current();if(!p?.image)return;const [x,y]=norm(e);
+if(drag){p.record.roi.points[drag.i]=[x,y];refreshPreview();draw();}
+else if(stroke){const last=stroke.points[stroke.points.length-1];if(Math.hypot(x-last[0],y-last[1])>.004){stroke.points.push([x,y]);draw();}}});
+canvas.addEventListener('pointerup',e=>{const p=current();if(!p?.image)return;const [x,y]=norm(e);
+if(drag){drag=null;if(selfCrosses(p.record.roi.points)){p.record=undoStack.pop();const i=index;index=-1;show(i,true);message('That point would make the outline cross itself, so it was put back.');return;}changed();return;}
+if(stroke){stroke=null;changed();return;}
+if(down){down=null;click(x,y);}});
+function click(x,y){const p=current();if(!p)return;const r=p.record;
+if(tool.endsWith('_seed')){if(!r.full_frame_substrate_confirmed&&!r.roi?.points){message('Draw the outline first (Redraw outline), or tick "Substrate fills the whole photo".');return;}
+if(!r.full_frame_substrate_confirmed&&!inside(r.roi.points,x,y)){message('That spot is outside the outline. Click inside it.');return;}
+pushUndo();r.seeds.push({label:tool==='mycelium_seed'?'mycelium':'substrate',x,y,radius:Math.min(.1,Math.max(.001,Number($('radius').value)/100))});changed();const n=k=>r.seeds.filter(s=>s.label===k).length;message(!n('substrate')?'Now click on bare substrate to see the result.':!n('mycelium')?'Now click on mycelium to see the result.':'Spot added. A few spots of each kind work best.');}
+else if(tool.startsWith('paint_')){}
+else{pending.push([x,y]);draw();message(pending.length+' corners. Press Finish when the shape is complete.');}}
+function finish(){const p=current();if(!p)return;if(pending.length<3){message('A shape needs at least three corners.');return;}if(selfCrosses(pending)){message('The edges cross each other. Cancel and try again.');return;}pushUndo();
+if(tool==='roi'){p.record.roi={kind:'polygon',points:clone(pending)};p.record.full_frame_substrate_confirmed=false;$('whole').checked=false;pending=[];changed();setTool('mycelium_seed','Outline saved. Now click on mycelium and on bare substrate.');return;}
+if(tool==='background')p.record.background_exclusions.push(clone(pending));else if(['mycelium','substrate','uncertain'].includes(tool))p.record.corrections.push({label:tool,points:clone(pending)});
+pending=[];changed();message('Shape saved.');}
+$('finish').onclick=finish;document.addEventListener('keydown',e=>{if(e.key==='Enter'&&!['INPUT','SELECT','TEXTAREA'].includes(e.target.tagName)){e.preventDefault();finish();}});
+$('clearPending').onclick=()=>{pending=[];draw();};
+$('undo').onclick=()=>{if(pending.length){pending.pop();draw();}else if(undoStack.length&&current()){current().record=undoStack.pop();const i=index;index=-1;show(i,true);}};
+$('clearSeeds').onclick=()=>{if(current()){pushUndo();current().record.seeds=[];changed();}};
+$('clearStrokes').onclick=()=>{if(current()){pushUndo();current().record.strokes=[];changed();}};
+$('clearPolys').onclick=()=>{if(current()){pushUndo();current().record.corrections=[];current().record.background_exclusions=[];changed();}};
+for(const id of ['view','date','reviewed'])$(id).addEventListener('change',readFields);
+$('showPrev').addEventListener('change',draw);
+$('method').addEventListener('change',()=>{readFields();changed();});
+$('whole').addEventListener('change',()=>{const p=current();if(!p)return;pushUndo();if($('whole').checked)delete p.record.roi;readFields();if(!$('whole').checked&&p.image&&!p.record.roi){p.noGuess=false;guessOutline(p);}changed();});
+
+/* ---- save: the marks go back to the app (nothing is downloaded) ---- */
+$('save').onclick=()=>{readFields();const p=current();if(!p?.image){message('No photo to save.');return;}if(pending.length){message('Finish or cancel the unfinished shape first.');return;}
+const r=p.record;if(!r.full_frame_substrate_confirmed&&!r.roi?.points){message('Draw the outline first, or tick "Substrate fills the whole photo".');return;}
+toStreamlit('streamlit:setComponentValue',{value:{photo_id:photoId,record:clone(r),reviewed:!!r.reviewed,saved_at:Date.now()},dataType:'json'});
+message('Saved. See the result below.');};
+
+/* ---- the app sends the photo and its observation; a new photo_id starts afresh, the same one keeps the marks ---- */
+window.addEventListener('message',async e=>{const d=e.data;if(!d||d.type!=='streamlit:render')return;const a=d.args||{};
+if(a.photo_id===photoId)return;photoId=a.photo_id;photos=[];index=-1;
+const rec=base({...(a.record||{}),image_path:a.file_name||'',photo_id:a.photo_id||'',batch_id:a.batch_id||'',batch_start_date:a.batch_start||'',sample_id:a.sample_id||'',view:(a.record&&a.record.view)||a.view||'top',date:(a.record&&a.record.date)||a.date||''});
+if(!rec.date)delete rec.date;
+try{photos=[{record:rec,image:await decoded(a.photo)}];setTool('mycelium_seed');show(0);if(a.record&&(a.record.seeds||[]).length)message('Your saved marks are shown. Change them, or tick and Save again.');}
+catch(err){message(err.message);draw();}sendHeight();});
+toStreamlit('streamlit:componentReady',{apiVersion:1});
+</script></body></html>

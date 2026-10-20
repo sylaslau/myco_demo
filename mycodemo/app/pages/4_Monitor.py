@@ -145,15 +145,9 @@ def analyse_photo(data: bytes):
 
 
 def batch_record():
-    """The one pipeline batch, with every sample photo and the stage log copied in."""
-    b = flow.get_batch()
-    if b.goal is None:                           # no plan from the earlier pages: the page's own default
-        b.goal, b.choice = "Food", "Blue Oyster"
-    if PLAN:
-        b.inoc_date, b.temp_c = PLAN["inoc_date"], PLAN["temp_c"]
-    b.photos = [pipeline.Photo(day=r["day"], file=r["file"], coverage=r["coverage"], method=r["method"],
-                               quality=r["quality"]) for rows in SAMPLE_PHOTOS.values() for r in rows]
-    return b
+    """The one pipeline batch, with every sample photo copied in (a photo checked on Check image replaces its HSV
+    value; one marked but not yet ticked is left out)."""
+    return flow.sample_batch()
 
 
 # --- sidebar: the environment list above Restore --------------------------------------------
@@ -227,12 +221,17 @@ for name in residences():
                         taken = date.today()
                     a_ = analyse_photo(up.getvalue())
                     row = {"series_id": sample, "day": days_since(taken, batch.inoc_date), "file": f"upload: {up.name}",
-                           "coverage": a_["coverage"], "method": a_["method"], "quality": a_["quality"]}
+                           "coverage": a_["coverage"], "method": a_["method"], "quality": a_["quality"],
+                           "date": taken.isoformat(), "data": up.getvalue()}     # data: for Check image (session only)
                     rows = SAMPLE_PHOTOS.setdefault(sample, [])
                     if not any((r["file"], r["day"]) == (row["file"], row["day"]) for r in rows):
                         rows.append(row)
                     ss["pipeline_result"] = pipeline.run(batch_record())     # Photo coverage -> Colonisation forecast
-                    st.success(f"Photo saved under {sample}.")
+                    st.success(f"Photo saved under {sample}. Quick guess: {100 * a_['coverage']:.0f}% colonised "
+                               f"({a_['method']}). Check it with your own marks on Check image.")
+                    if st.button("Check image", key=f"check_{name}_{sample}", type="primary"):
+                        ss["check_target"] = {"sample": sample, "file": row["file"]}
+                        st.switch_page("pages/5_Check_image.py")
 
 if not residences():
     st.info("Choose where you grow on the Environment page first.")

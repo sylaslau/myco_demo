@@ -63,6 +63,7 @@ STAGE_TARGET = 0.90                   # 90 % of the photo is a surface marker, n
 ENDPOINT_LABEL = "90% visible (consensus day)"
 MARKER_LABEL = "Induction planning marker"
 POST_90_DAYS = 2
+MARKED_METHOD = "marked by you"       # Photo coverage from the Check image page (2.4 marks), not the HSV guess
 
 
 # --- batch record ---------------------------------------------------------------------------
@@ -73,6 +74,8 @@ class Photo:
     coverage: float                   # 0-1
     method: str = "HSV threshold"
     quality: str = ""                 # '' = passed, else the reason(s)
+    sample: str = ""                  # sample ID (one bag or jar); '' in older backups
+    checked: bool = False             # True = coverage marked and checked by the user (Check image page)
 
 
 @dataclass
@@ -419,22 +422,32 @@ def fruiting_estimate(batch):
     return Step(name, {**f, "inferred": inferred, "row": row_note}, "typical range", note)
 
 
+def forecast_photos(batch):
+    """The photos the Colonisation forecast uses: a photo checked by the user replaces the HSV one(s) of the same
+    sample and day."""
+    checked = {(p.sample, p.day) for p in batch.photos if p.checked}
+    return [p for p in batch.photos if p.checked or (p.sample, p.day) not in checked]
+
+
 def _photo_series(batch):
-    ph = sorted((p for p in batch.photos if p.day >= 0), key=lambda p: p.day)   # a photo before inoculation is a date slip
+    ph = sorted((p for p in forecast_photos(batch) if p.day >= 0), key=lambda p: p.day)   # a photo before inoculation is a date slip
     return np.array([p.day for p in ph], float), np.array([p.coverage for p in ph], float)
 
 
 def _consensus_forecast(batch, est, today):
     """2.5: the 2.2 curve updated by dated photo coverage (one mean per day, quality-passed photos) and the condition
-    history. No photos = the 2.2 estimate for the same conditions. Raises ValueError when 2.5 gives no number."""
+    history. A checked photo replaces the HSV one of the same sample and day, and counts even with a photo-quality note
+    (the user has looked at it). No photos = the 2.2 estimate for the same conditions. Raises ValueError when 2.5 gives
+    no number."""
     row, _ = baseline_row(batch)
     cm = _consensus()
     initial = {"temperature_c": batch.temp_c, "temperature_basis": "air", "humidity_pct": None, "drying_exposed": False}
     start = batch.inoc_date
-    by_day = {}
-    for p in batch.photos:
-        if p.day >= 0 and not p.quality:
+    by_day, used = {}, []
+    for p in forecast_photos(batch):
+        if p.day >= 0 and (p.checked or not p.quality):
             by_day.setdefault(p.day, []).append(p.coverage)
+            used.append(p)
     coverage = [{"day": d, "coverage_fraction": float(np.mean(v))} for d, v in sorted(by_day.items())]
     logged = {}
     for k in sorted(batch.conditions, key=lambda k: k.date):
@@ -454,16 +467,17 @@ def _consensus_forecast(batch, est, today):
     if t90 is None:
         raise ValueError(f"the 2.5 update gave no number ({f['status']})")
     lo, typ, hi = t90
-    n = len(batch.photos)
+    n, n_checked = len(used), sum(p.checked for p in used)
     value = {"day90": typ, "day90_range": (lo, hi), "method": "consensus update" if obs else "estimate", "n_photos": n,
-             "engine": "consensus", "status": f["status"], "post_90_days": cm.post_90_days}
+             "n_checked": n_checked, "engine": "consensus", "status": f["status"], "post_90_days": cm.post_90_days}
     if not obs:
         return Step("Colonisation forecast", value, "consensus model",
                     "No usable photos yet, so this is the Colonisation time estimate for your logged conditions. "
                     + est.note)
     return Step("Colonisation forecast", value, "photos + consensus model",
-                f"Consensus curve (notebook 2.5) anchored to the 2.2 day and updated by {len(obs)} dated photo "
-                f"coverage value(s) (HSV Photo coverage, not reviewed) and your logged conditions: status "
+                f"Consensus curve (notebook 2.5) anchored to the 2.2 day and updated by {len(obs)} day(s) of photo "
+                f"coverage from {n} photo(s), {n_checked} of them checked by you (the rest HSV Photo coverage, not "
+                f"reviewed), and your logged conditions: status "
                 f"{f['status'].replace('_', ' ')}. A planning scenario, not a validated model.")
 
 
@@ -645,6 +659,56 @@ def days_to_next_stage(batch, cover, temp_c):
     lo, hi = est.value["days"]
     return Step(name, (max(0.0, left * lo), max(0.0, left * hi)), "your photos",
                 f"Rough: where this photo sits on a typical curve, at {temp_c:g} °C. Real growth varies.")
+
+
+# --- Check image feedback ---------------------------------------------------------------------------
+def typical_coverage(day, t90):
+    """Coverage (0-1) of the estimate curve on `day` when 90% is reached on day t90: the S-curve through 2% on day 0
+    and 90% on day t90, the dotted estimate of the Recipe and timeline chart (shape assumed)."""
+    def logit(c):
+        return np.log(c / (1 - c))
+    k = (logit(0.90) - logit(0.02)) / t90
+    return float(1 / (1 + np.exp(-(logit(0.02) + k * day))))
+
+
+def typical_band(batch, day):
+    """(low, high) coverage (0-1) on `day` from the Colonisation time estimate: its curve with the 90% day at the
+    latest and at the earliest day of its range. None when there is no estimate."""
+    est = colonisation_estimate(batch)
+    if est.value is None:
+        return None
+    lo, hi = est.value["days"]
+    return typical_coverage(day, hi), typical_coverage(day, lo)
+
+
+def pace_text(coverage_pct, day, band):
+    """'38% of the surface colonised on day 6. Typical for day 6: 20-45%, so in range.' (rounded numbers)."""
+    pct, day = round(coverage_pct), round(day)
+    text = f"{pct}% of the surface colonised on day {day}."
+    if band is None:
+        return text
+    lo, hi = round(100 * band[0]), round(100 * band[1])
+    verdict = "in range" if lo <= pct <= hi else "faster than typical" if pct > hi else "slower than typical"
+    return f"{text} Typical for day {day}: {lo}-{hi}%, so {verdict}."
+
+
+def induction_date(batch, result=None):
+    """Estimated induction day = Colonisation forecast 90% day + POST_90_DAYS, as a date; None without a forecast."""
+    fc = (result or run(batch)).colonisation_forecast
+    if fc.value is None:
+        return None
+    post = fc.value.get("post_90_days", POST_90_DAYS)
+    return batch.inoc_date + timedelta(days=round(fc.value["day90"] + post))
+
+
+def induction_text(new, old):
+    """'Estimated induction day: 24 Oct, 2 days earlier than before this photo.' (later / unchanged)."""
+    text = f"Estimated induction day: {new.day} {new:%b}"
+    diff = (new - old).days
+    if diff == 0:
+        return f"{text}, unchanged by this photo."
+    n = abs(diff)
+    return f"{text}, {n} day{'s' if n != 1 else ''} {'earlier' if diff < 0 else 'later'} than before this photo."
 
 
 # --- the coordinator ---------------------------------------------------------------------------
