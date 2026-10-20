@@ -36,10 +36,9 @@ st.title("Shroomie")
 st.markdown(
     "<div style='font-size:1.05rem'>Your mycelium cultivation buddy 🍄 I sit by your side to:"
     "<ul>"
-    "<li>🍄 help you pick what to grow</li>"
-    "<li>🧪 hand you a starter recipe</li>"
+    "<li>🍄 guide you through you a starter recipe </li>"
     "<li>📷 watch out for your mycelium and help you tend to their needs </li>"
-    "<li>⏰ tell you when the next stage is coming</li>"
+    "<li>⏰ tell you when the next stage is coming and how to proceed</li>"
     "</ul></div>",
     unsafe_allow_html=True,
 )
@@ -47,9 +46,9 @@ st.markdown(
 st.markdown(FLOW_CSS, unsafe_allow_html=True)
 food, thing = st.columns(2)
 food.markdown(stage_flow("Food", [("Culture", False), ("Spawn", False), ("Block", True),
-                                  ("Flush", True), ("Flush", True)]), unsafe_allow_html=True)
-thing.markdown(stage_flow("Thing", [("Culture", False), ("Spawn", False), ("Pretreatment", False),
-                                    ("Block", True), ("Posttreatment", False)]), unsafe_allow_html=True)
+                                  ("Flushes", True)]), unsafe_allow_html=True)
+thing.markdown(stage_flow("Thing", [("Culture", False), ("Spawn", False), ("Pre-treatment", False),
+                                    ("Block", True), ("Post-treatment", False)]), unsafe_allow_html=True)
 
 st.write("")
 st.caption("")

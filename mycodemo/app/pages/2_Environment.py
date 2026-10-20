@@ -22,6 +22,7 @@ WHERE = {
     "Room": ("Room", "Size (floor area, m²)", 2, 50, 12, 1),
 }
 CONTAINERS = {
+    "Glass Jar": ("Size (litres)", 0.5, 5.0, 1.0, 0.5),
     "Tupperware": ("Size (litres)", 0.5, 5.0, 1.0, 0.5),
     "Grow bag": ("Size (litres)", 0.5, 10.0, 1.0, 0.5),
     "Bucket": ("Size (litres)", 0.5, 10.0, 1.0, 0.5),
@@ -102,7 +103,8 @@ else:
     st.caption(f"Row used: {br[1]}.")
     if ss["goal"] == "Food":
         ft = baseline_guide.fruiting(br[0])["fruiting_temp_C"]
-        st.caption(f"Fruiting later wants {ft['min']}–{ft['max']} °C (consensus guide).")
+        st.caption(
+            f"Fruiting later wants {ft['min']}–{ft['max']} °C (consensus guide).")
 
 if ss["environment"]:
     st.page_link("pages/3_Recipe_and_timeline.py",

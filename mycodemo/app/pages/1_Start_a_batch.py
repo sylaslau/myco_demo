@@ -33,7 +33,7 @@ def is_food(shown):
 
 
 st.title("Start a batch")
-st.write("Pick one for this batch. If you want to grow more than one type, start a new batch in another go.")
+st.write("What do you want to grow? Pick one for this batch.")
 left, right = st.columns(2)
 
 with left:
